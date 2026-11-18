@@ -1123,6 +1123,7 @@ if (typeof document !== 'undefined') {
     if (resp.status === 401 && !retried && state.gcalClientId) {
       setGcalToken(null);
       await gcalConnectSilent(state.gcalClientId);
+      render();
       return gTokenApi(url, options, true);
     }
     if (!resp.ok) throw new Error('Google API fout ' + resp.status);
@@ -1160,6 +1161,31 @@ if (typeof document !== 'undefined') {
     };
     const ev = await gcalApi('/calendars/primary/events', { method: 'POST', body: JSON.stringify(body) });
     return ev.id;
+  }
+
+  async function planReal() {
+    if (!gcalToken && state.gcalClientId) {
+      showToast('🔗 Even stil verbinden met Google…', null);
+      try {
+        await gcalConnectSilent(state.gcalClientId);
+      } catch (e) {
+        try {
+          await gcalConnect(state.gcalClientId);
+        } catch (e2) {
+          showToast('Verbinding mislukt: ' + e2.message, null);
+          render();
+          return;
+        }
+      }
+      render();
+    }
+    if (!gcalToken) {
+      showToast('Vul eerst je Google Client ID in (📅 Agenda) en klik “Verbind met Google”.', null);
+      return;
+    }
+    syncCalendar(false)
+      .then((r) => showToast(`☁️ ${r.created} klussen naar je Google Agenda gestuurd.`, null))
+      .catch((err) => showToast('Sync mislukt: ' + err.message, null));
   }
 
   async function syncCalendar(demo) {
@@ -1254,7 +1280,7 @@ if (typeof document !== 'undefined') {
         </form>
         <div class="settings-actions">
           <button class="btn secondary" data-action="plan-demo">🗓️ Plan deze maand (demo)</button>
-          <button class="btn" data-action="plan-real" ${gcalToken ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}>☁️ Sync naar Google Agenda</button>
+          <button class="btn" data-action="plan-real">☁️ Sync naar Google Agenda</button>
         </div>
         <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google (Calendar + Drive-backup).' : state.gcalClientId ? 'Client ID opgeslagen — de app probeert automatisch (stilletjes) te verbinden. Lukt dat niet? Klik dan één keer “Verbind met Google” (per apparaat).' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
       </div>
@@ -1387,10 +1413,7 @@ if (typeof document !== 'undefined') {
         .then((r) => showToast(`🗓️ ${r.created} klussen gepland voor deze maand (demo).`, null))
         .catch((err) => showToast('Plannen mislukt: ' + err.message, null));
     } else if (action === 'plan-real') {
-      if (!gcalToken) { showToast('Verbind eerst met Google Calendar.', null); return; }
-      syncCalendar(false)
-        .then((r) => showToast(`☁️ ${r.created} klussen naar je Google Agenda gestuurd.`, null))
-        .catch((err) => showToast('Sync mislukt: ' + err.message, null));
+      planReal();
     } else if (action === 'lock-now') {
       lockNow();
     } else if (action === 'show-progress') {

@@ -102,6 +102,11 @@ assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
   click('drive-backup');
   assert.ok(elements['toast'].innerHTML.includes('Verbind eerst'), 'drive-backup zonder token meldt netjes');
 
+  // 10. plan-real zonder Client ID geeft nette melding (knop is niet meer disabled)
+  click('plan-real');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.ok(elements['toast'].innerHTML.includes('Client ID'), 'plan-real zonder client-id meldt netjes');
+
   console.log('Smoke-test geslaagd ✔');
   process.exit(0);
 })();
