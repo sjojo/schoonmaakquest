@@ -226,6 +226,36 @@ function planMonth(tasks, statsOf, now, busyByMonth, plannedKeys) {
   return assignments;
 }
 
+/* ---------- Agenda-bundels (taken groeperen per dag) ---------- */
+
+const GROUPS = {
+  sanitair: '🚿 Sanitair (badkamer + wc)',
+  stofzuigen: '🧹 Stofzuigen (alle kamers)',
+  planten: '🪴 Plantenzorgen',
+};
+
+const GROUP_RULES = [
+  { group: 'sanitair', match: (t) => t.roomId === 'ba' || t.roomId === 'wc' },
+  { group: 'stofzuigen', match: (t) => /stofzuig/i.test(t.title) },
+  { group: 'planten', match: (t) => /plant/i.test(t.title) },
+];
+
+function bundleAssignments(assignments, taskById) {
+  const byKey = {};
+  const order = [];
+  for (const a of assignments) {
+    const t = taskById(a.taskId);
+    const g = (t && t.group) || null;
+    const key = g ? a.date + '|' + g : a.date + '|' + a.taskId;
+    if (!byKey[key]) {
+      byKey[key] = { date: a.date, group: g, taskIds: [] };
+      order.push(key);
+    }
+    byKey[key].taskIds.push(a.taskId);
+  }
+  return order.map((k) => byKey[k]);
+}
+
 const BADGES = [
   { id: 'first',    icon: '🌱', name: 'Eerste klus',          desc: 'Rond je eerste schoonmaakklus af.',            check: (s) => s.history.length >= 1 },
   { id: 'ten',      icon: '🧽', name: 'Handig bezig',         desc: '10 klussen voltooid.',                         check: (s) => s.history.length >= 10 },
@@ -306,6 +336,10 @@ function seedState() {
     T('pl', 'Onderzetters en potten schoonmaken', 'monthly', 10),
     T('pl', 'Grote planten verpotten', 'quarterly', 15),
   ];
+  for (const t of tasks) {
+    const r = GROUP_RULES.find((x) => x.match(t));
+    if (r) t.group = r.group;
+  }
   return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '', pinEnabled: false, pinHash: null };
 }
 
@@ -316,6 +350,7 @@ if (typeof module !== 'undefined' && module.exports) {
     bestStreak, startOfToday, doneToday, dueTasks, checkBadges, seedState,
     pad2, isoDate, daysInMonth, monthKey, dayNum, sameMonth, busyFromEvents,
     demoBusyMap, nextDueDate, spreadOverDays, planMonth,
+    GROUPS, GROUP_RULES, bundleAssignments,
   };
 }
 
@@ -413,8 +448,8 @@ if (typeof document !== 'undefined') {
     showToast('Laatste klus ongedaan gemaakt.', null);
   }
 
-  function addTask(title, roomId, freq, points) {
-    state.tasks.push({ id: uid(), roomId, title, freq, points: Number(points) });
+  function addTask(title, roomId, freq, points, group) {
+    state.tasks.push({ id: uid(), roomId, title, freq, points: Number(points), group: group || null });
     save();
     render();
   }
@@ -513,6 +548,7 @@ if (typeof document !== 'undefined') {
           <div class="task-title">${esc(t.title)}</div>
           <div class="task-meta">
             <span class="tag room">${room ? esc(room.icon + ' ' + room.name) : ''}</span>
+            ${t.group ? `<span class="tag">${esc(GROUPS[t.group] || t.group)}</span>` : ''}
             <span class="tag freq">${freq.label}</span>
             <span class="tag pts">⭐ ${t.points}</span>
             ${st.streak > 1 ? `<span class="tag streak">🔥 ${st.streak}x</span>` : ''}
@@ -577,6 +613,8 @@ if (typeof document !== 'undefined') {
     const pointsOptions = POINT_OPTIONS.map((p) => `<option value="${p}">⭐ ${p} XP</option>`).join('');
     const roomSelectOptions = state.rooms
       .map((r) => `<option value="${r.id}">${esc(r.icon + ' ' + r.name)}</option>`).join('');
+    const groupOptions = Object.entries(GROUPS)
+      .map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
 
     let tasks = state.tasks.slice();
     if (roomFilter !== 'all') tasks = tasks.filter((t) => t.roomId === roomFilter);
@@ -595,6 +633,7 @@ if (typeof document !== 'undefined') {
         <select id="new-task-room">${roomSelectOptions}</select>
         <select id="new-task-freq">${freqOptions}</select>
         <select id="new-task-points">${pointsOptions}</select>
+        <select id="new-task-group" title="Bundel in de agenda"><option value="">Geen agenda-bundel</option>${groupOptions}</select>
         <button type="submit">+ Toevoegen</button>
       </form>
       <div class="controls">
@@ -613,7 +652,8 @@ if (typeof document !== 'undefined') {
         title,
         document.getElementById('new-task-room').value,
         document.getElementById('new-task-freq').value,
-        document.getElementById('new-task-points').value
+        document.getElementById('new-task-points').value,
+        document.getElementById('new-task-group').value
       );
     });
     document.getElementById('room-filter').addEventListener('change', (e) => {
@@ -861,11 +901,27 @@ if (typeof document !== 'undefined') {
     const date = nextDueDate(st, task.freq, now);
     const key = task.id + '@' + date;
     if (state.planned.some((p) => p.taskId + '@' + p.date === key)) return;
+    const group = task.group || null;
+    const existing = group
+      ? state.planned.find((p) => p.date === date && p.eventId && p.taskId !== task.id && ((state.tasks.find((t) => t.id === p.taskId) || {}).group || null) === group)
+      : null;
     try {
-      const eventId = await gcalCreateAllDay(task, roomOf(task), date);
-      state.planned.push({ taskId: task.id, date: date, freq: task.freq, eventId: eventId, demo: false, plannedAt: now });
-      save();
-      showToast(`📅 Volgende “${task.title}” in je agenda op ${date}.`, null);
+      if (existing) {
+        const mates = state.planned
+          .filter((p) => p.eventId === existing.eventId)
+          .map((p) => state.tasks.find((t) => t.id === p.taskId))
+          .filter(Boolean)
+          .concat([task]);
+        await gcalApi('/calendars/primary/events/' + existing.eventId, { method: 'PATCH', body: JSON.stringify({ description: eventDescription(mates) }) });
+        state.planned.push({ taskId: task.id, date: date, freq: task.freq, eventId: existing.eventId, demo: false, plannedAt: now });
+        save();
+        showToast(`📅 “${task.title}” toegevoegd aan de bundel op ${date}.`, null);
+      } else {
+        const eventId = await gcalCreateEvent('🧹 ' + task.title, date, eventDescription([task]));
+        state.planned.push({ taskId: task.id, date: date, freq: task.freq, eventId: eventId, demo: false, plannedAt: now });
+        save();
+        showToast(`📅 Volgende “${task.title}” in je agenda op ${date}.`, null);
+      }
     } catch (err) {
       showToast('Agenda-event mislukt: ' + err.message, null);
     }
@@ -926,12 +982,20 @@ if (typeof document !== 'undefined') {
     return busyFromEvents(data.items || []);
   }
 
-  async function gcalCreateAllDay(task, room, date) {
+  function eventDescription(tasks) {
+    const lines = tasks.map((t) => {
+      const r = roomOf(t);
+      return '• ' + t.title + ' (' + (r ? r.name : '-') + ') · ' + (FREQS[t.freq] ? FREQS[t.freq].label : t.freq) + ' · ⭐ ' + t.points + ' XP';
+    });
+    return lines.join('\n') + '\n— SchoonmaakQuest';
+  }
+
+  async function gcalCreateEvent(summary, date, description) {
     const p = date.split('-').map(Number);
     const end = isoDate(p[0], p[1] - 1, p[2] + 1);
     const body = {
-      summary: '🧹 ' + task.title,
-      description: 'Kamer: ' + (room ? room.name : '-') + ' · ' + (FREQS[task.freq] ? FREQS[task.freq].label : task.freq) + ' · ⭐ ' + task.points + ' XP — SchoonmaakQuest',
+      summary: summary,
+      description: description,
       start: { date: date },
       end: { date: end },
     };
@@ -961,20 +1025,25 @@ if (typeof document !== 'undefined') {
     }
     const plannedKeys = state.planned.map((p) => p.taskId + '@' + p.date);
     const assignments = planMonth(state.tasks, (t) => taskStats(state, t, now), now, busyByMonth, plannedKeys);
+    const taskById = (id) => state.tasks.find((t) => t.id === id);
+    const bundles = bundleAssignments(assignments, taskById);
     let created = 0;
-    for (const a of assignments) {
-      const task = state.tasks.find((t) => t.id === a.taskId);
-      if (!task) continue;
+    for (const b of bundles) {
+      const tasksIn = b.taskIds.map(taskById).filter(Boolean);
+      if (!tasksIn.length) continue;
+      const summary = b.group ? (GROUPS[b.group] || b.group) : '🧹 ' + tasksIn[0].title;
       let eventId = null;
       if (!demo) {
         try {
-          eventId = await gcalCreateAllDay(task, roomOf(task), a.date);
+          eventId = await gcalCreateEvent(summary, b.date, eventDescription(tasksIn));
         } catch (err) {
-          showToast('Agenda-fout bij “' + task.title + '”: ' + err.message, null);
+          showToast('Agenda-fout bij “' + summary + '”: ' + err.message, null);
         }
       }
-      state.planned.push({ taskId: a.taskId, date: a.date, freq: a.freq, eventId: eventId, demo: demo, plannedAt: now });
-      created += 1;
+      for (const t of tasksIn) {
+        state.planned.push({ taskId: t.id, date: b.date, freq: t.freq, eventId: eventId, demo: demo, plannedAt: now });
+        created += 1;
+      }
     }
     state.lastPlanMonth = monthKey(y, m);
     save();
@@ -994,17 +1063,21 @@ if (typeof document !== 'undefined') {
     const planned = state.planned
       .filter((p) => p.date >= monthStart && p.date <= monthEnd)
       .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    const rows = planned.map((p) => {
-      const t = state.tasks.find((x) => x.id === p.taskId);
-      const room = t ? roomOf(t) : null;
+    const taskById = (id) => state.tasks.find((x) => x.id === id);
+    const bundles = bundleAssignments(planned.map((p) => ({ taskId: p.taskId, date: p.date, freq: p.freq })), taskById);
+    const rows = bundles.map((b) => {
+      const tasksIn = b.taskIds.map(taskById).filter(Boolean);
+      const title = b.group ? (GROUPS[b.group] || b.group) : (tasksIn[0] ? tasksIn[0].title : '(verwijderde taak)');
+      const sub = tasksIn.map((t) => (roomOf(t) ? roomOf(t).icon : '') + ' ' + t.title).join(' · ');
+      const first = planned.find((p) => p.taskId === b.taskIds[0] && p.date === b.date);
       return `
         <div class="task">
           <div class="task-body">
-            <div class="task-title">${t ? esc(t.title) : '(verwijderde taak)'}</div>
+            <div class="task-title">${esc(title)}${b.taskIds.length > 1 ? ` <span class="tag">bundel · ${b.taskIds.length} taken</span>` : ''}</div>
             <div class="task-meta">
-              ${room ? `<span class="tag room">${esc(room.icon + ' ' + room.name)}</span>` : ''}
-              <span class="tag freq">${esc(p.date)} · ${FREQS[p.freq] ? esc(FREQS[p.freq].label) : esc(p.freq)}</span>
-              ${p.demo ? '<span class="tag">demo</span>' : '<span class="tag" style="background:#eff6ff;color:#1d4ed8;border-color:#dbeafe">Google Agenda</span>'}
+              <span class="tag freq">${esc(b.date)}</span>
+              <span class="tag">${esc(sub)}</span>
+              ${first && first.demo ? '<span class="tag">demo</span>' : '<span class="tag" style="background:#eff6ff;color:#1d4ed8;border-color:#dbeafe">Google Agenda</span>'}
             </div>
           </div>
         </div>`;
@@ -1026,7 +1099,7 @@ if (typeof document !== 'undefined') {
         </div>
         <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google Calendar.' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
       </div>
-      <h3>Gepland deze maand (${planned.length})</h3>
+      <h3>Gepland deze maand (${bundles.length} agenda-items, ${planned.length} taken)</h3>
       <div class="list">${rows || '<div class="empty">Nog niets gepland voor ' + mk + '. Klik op “Plan deze maand”.</div>'}</div>`;
 
     document.getElementById('gcal-form').addEventListener('submit', async (e) => {

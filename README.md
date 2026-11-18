@@ -47,6 +47,9 @@ Daarna:
 - Zonder verbinding: **"Plan deze maand (demo)"** toont de spreiding met een fictieve agenda
 - Geplande items staan in `state.planned` (dus ook in je JSON-backup); dubbelen worden voorkomen
 
+### 🧺 Bundels in de agenda
+Sommige taken horen bij elkaar — die blijven **aparte taken** in de app (los afvinken, eigen streak/XP), maar worden in de agenda **gebundeld tot één event per dag**. Seed-bundels: `🚿 Sanitair (badkamer + wc)`, `🧹 Stofzuigen (alle kamers)`, `🪴 Plantenzorgen`. Bij het toevoegen van een taak kies je optioneel een bundel; bij afvinken van een gebundelde taak wordt deze toegevoegd aan het bestaande agenda-event van die dag (of er wordt een nieuw event gemaakt). De bundelregels staan in `GROUP_RULES` in `app.js`.
+
 ## 🌐 Hosting op je eigen subdomein (bijv. schoonmaak.spstuur.nl)
 
 De app is een static site; automatische updates gaan via GitHub Actions (`.github/workflows/pages.yml` deployt elke push naar `main` naar GitHub Pages). Stappen:

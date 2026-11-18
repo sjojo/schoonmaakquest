@@ -5,7 +5,7 @@ const {
   DAY, FREQS, taskStats, roomScore, xpTotal, levelInfo,
   bestStreak, doneToday, dueTasks, checkBadges, seedState, BADGES,
   isoDate, daysInMonth, monthKey, busyFromEvents, demoBusyMap,
-  spreadOverDays, planMonth, hashPin,
+  spreadOverDays, planMonth, hashPin, bundleAssignments, GROUPS,
 } = require('../app.js');
 
 const NOW = Date.parse('2025-06-15T12:00:00');
@@ -206,6 +206,42 @@ function makeState() {
   assert.notStrictEqual(hashPin('1234'), hashPin('1235'));
   assert.ok(!hashPin('1234').includes('1234'));
   assert.strictEqual(hashPin('1234').length, 16);
+}
+
+// 16. Bundels: zelfde dag + zelfde groep => 1 bundel; ongege hoort niet samen
+{
+  const tasks = [
+    { id: 'a', roomId: 'r', title: 'Wc schoonmaken', freq: 'weekly', points: 10, group: 'sanitair' },
+    { id: 'b', roomId: 'r', title: 'Douche schoonmaken', freq: 'weekly', points: 15, group: 'sanitair' },
+    { id: 'c', roomId: 'r', title: 'Stofzuigen', freq: 'weekly', points: 10, group: 'stofzuigen' },
+    { id: 'd', roomId: 'r', title: 'Losse klus', freq: 'weekly', points: 5, group: null },
+  ];
+  const byId = (id) => tasks.find((t) => t.id === id);
+  const a = [
+    { taskId: 'a', date: '2026-11-20', freq: 'weekly' },
+    { taskId: 'b', date: '2026-11-20', freq: 'weekly' },
+    { taskId: 'c', date: '2026-11-20', freq: 'weekly' },
+    { taskId: 'd', date: '2026-11-20', freq: 'weekly' },
+    { taskId: 'a', date: '2026-11-27', freq: 'weekly' },
+  ];
+  const bundles = bundleAssignments(a, byId);
+  const on20 = bundles.filter((b) => b.date === '2026-11-20');
+  assert.strictEqual(on20.length, 3, 'sanitair-bundel + stofzuigen + losse klus = 3 items op 20 nov');
+  const sanitair = on20.find((b) => b.group === 'sanitair');
+  assert.deepStrictEqual(sanitair.taskIds.sort(), ['a', 'b']);
+  const on27 = bundles.filter((b) => b.date === '2026-11-27');
+  assert.strictEqual(on27.length, 1);
+  assert.deepStrictEqual(on27[0].taskIds, ['a']);
+}
+
+// 17. Seed: wc- en badkamert taken zitten in de sanitair-bundel
+{
+  const s = seedState();
+  const sanitair = s.tasks.filter((t) => t.group === 'sanitair');
+  assert.ok(sanitair.length >= 8, 'sanitair-bundel gevuld');
+  assert.ok(sanitair.every((t) => t.roomId === 'ba' || t.roomId === 'wc'));
+  assert.ok(s.tasks.some((t) => t.group === 'stofzuigen' && /stofzuig/i.test(t.title)));
+  assert.ok(Object.keys(GROUPS).length >= 3);
 }
 
 console.log('Alle logica-tests geslaagd ✔');
