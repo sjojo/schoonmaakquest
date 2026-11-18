@@ -414,6 +414,7 @@ if (typeof document !== 'undefined') {
   let state = load();
   let currentTab = 'dashboard';
   let roomFilter = 'all';
+  let freqFilter = 'all';
   let toastTimer = null;
 
   function load() {
@@ -697,6 +698,9 @@ if (typeof document !== 'undefined') {
       '<option value="__vandaag__"' + (roomFilter === '__vandaag__' ? ' selected' : '') + '>📌 Te doen (vandaag)</option>']
       .concat(state.rooms.map((r) => `<option value="${r.id}"${roomFilter === r.id ? ' selected' : ''}>${esc(r.icon + ' ' + r.name)}</option>`))
       .join('');
+    const freqFilterOptions = ['<option value="all"' + (freqFilter === 'all' ? ' selected' : '') + '>Alle frequenties</option>']
+      .concat(Object.entries(FREQS).map(([k, v]) => `<option value="${k}"${freqFilter === k ? ' selected' : ''}>${v.label}</option>`))
+      .join('');
 
     const freqOptions = Object.entries(FREQS)
       .map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
@@ -709,6 +713,7 @@ if (typeof document !== 'undefined') {
     let tasks = state.tasks.slice();
     if (roomFilter === '__vandaag__') tasks = dueTasks(state, now).map((x) => x.task);
     else if (roomFilter !== 'all') tasks = tasks.filter((t) => t.roomId === roomFilter);
+    if (freqFilter !== 'all') tasks = tasks.filter((t) => t.freq === freqFilter);
     tasks.sort((a, b) => {
       const sa = taskStats(state, a, now);
       const sb = taskStats(state, b, now);
@@ -731,6 +736,7 @@ if (typeof document !== 'undefined') {
       <div class="controls">
         <label class="room-sub">Filter:</label>
         <select id="room-filter">${roomOptions}</select>
+        <select id="freq-filter" title="Filter op frequentie">${freqFilterOptions}</select>
       </div>
       <div class="list">
         ${tasks.length ? tasks.map((t) => taskRow(t, now)).join('') : '<div class="empty">Geen taken in deze selectie.</div>'}
@@ -758,6 +764,10 @@ if (typeof document !== 'undefined') {
     }
     document.getElementById('room-filter').addEventListener('change', (e) => {
       roomFilter = e.target.value;
+      render();
+    });
+    document.getElementById('freq-filter').addEventListener('change', (e) => {
+      freqFilter = e.target.value;
       render();
     });
   }

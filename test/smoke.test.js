@@ -119,6 +119,11 @@ assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
   click('toggle-theme');
   assert.ok(true, 'theme toggle klik ok');
 
+  // 13. Taken-tab heeft frequentie-filter
+  click('tab', { tab: 'tasks' });
+  assert.ok(elements['view-tasks'].innerHTML.includes('freq-filter'), 'freq-filter aanwezig');
+  assert.ok(elements['view-tasks'].innerHTML.includes('Wekelijks'), 'frequentie-opties aanwezig');
+
   console.log('Smoke-test geslaagd ✔');
   process.exit(0);
 })();
