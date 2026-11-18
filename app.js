@@ -189,12 +189,33 @@ function planMonth(tasks, statsOf, now, busyByMonth, plannedKeys) {
     return true;
   };
 
-  for (const t of tasks) {
-    if (t.freq !== 'weekly' && t.freq !== 'biweekly') continue;
-    const st = statsOf(t);
-    if (!st.due) continue;
-    const date = t.deadline && t.deadline >= todayIso ? t.deadline : nextDueDate(st, t.freq, now);
-    push(t.id, date, t.freq);
+  // Wekelijkse/2-wekelijkse taken die te doen zijn: spreid ze over het komence interval
+  // (meestal 7 dagen) over de minst drukke dagen; taken met deadline blijven op hun deadline.
+  // Taken in dezelfde bundel (group) blijven op één dag samen.
+  const weeklyDue = tasks.filter((t) => (t.freq === 'weekly' || t.freq === 'biweekly') && statsOf(t).due);
+  for (const t of weeklyDue) {
+    if (t.deadline && t.deadline >= todayIso) push(t.id, t.deadline, t.freq);
+  }
+  const restWeekly = weeklyDue.filter((t) => !(t.deadline && t.deadline >= todayIso));
+  if (restWeekly.length) {
+    const groups = {};
+    for (const t of restWeekly) {
+      const g = t.group || '__solo__' + t.id;
+      (groups[g] = groups[g] || []).push(t);
+    }
+    const items = Object.entries(groups).map(([g, ts]) => ({ key: g, points: ts.reduce((s, x) => s + x.points, 0), tasks: ts }));
+    const interval = Math.max(7, ...restWeekly.map((t) => freqDays(t.freq)));
+    const days = [];
+    for (let i = 0; i < interval; i++) {
+      const d = new Date(y, m, nowD.getDate() + i);
+      days.push(isoDate(d.getFullYear(), d.getMonth(), d.getDate()));
+    }
+    const busy = {};
+    for (const iso of days) busy[iso] = ((busyByMonth[iso.slice(0, 7)] || {})[iso]) || 0;
+    for (const a of spreadOverDays(items.map((it) => ({ taskId: it.key, points: it.points })), days, busy, assigned)) {
+      const it = items.find((x) => x.key === a.taskId);
+      for (const t of it.tasks) push(t.id, a.date, t.freq);
+    }
   }
 
   const monthDays = [];
@@ -353,7 +374,7 @@ function seedState() {
     const r = GROUP_RULES.find((x) => x.match(t));
     if (r) t.group = r.group;
   }
-  return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '', pinEnabled: false, pinHash: null, driveBackup: true, lastDriveBackup: null };
+  return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '', gcalCalendarId: null, pinEnabled: false, pinHash: null, driveBackup: true, lastDriveBackup: null };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -387,6 +408,7 @@ if (typeof document !== 'undefined') {
           if (!Array.isArray(s.planned)) s.planned = [];
           if (!s.lastPlanMonth) s.lastPlanMonth = null;
           if (!s.gcalClientId) s.gcalClientId = '';
+          if (!('gcalCalendarId' in s)) s.gcalCalendarId = null;
           if (typeof s.pinEnabled !== 'boolean') s.pinEnabled = false;
           if (!s.pinHash) s.pinHash = null;
           if (typeof s.driveBackup !== 'boolean') s.driveBackup = true;
@@ -441,7 +463,7 @@ if (typeof document !== 'undefined') {
 
   /* ----- Acties ----- */
 
-  function completeTask(taskId) {
+  async function completeTask(taskId) {
     const task = state.tasks.find((t) => t.id === taskId);
     if (!task) return;
     const now = Date.now();
@@ -466,6 +488,7 @@ if (typeof document !== 'undefined') {
     unlocked.forEach((b, i) => {
       setTimeout(() => showToast(`🏆 Badge ontgrendeld: ${b.icon} ${b.name}`, null), 400 * (i + 1));
     });
+    try { await removeTaskFromCalendar(task); render(); } catch (e) { /* agenda opruimen is best-effort */ }
     scheduleNextEvent(task).catch(() => {});
   }
 
@@ -986,7 +1009,7 @@ if (typeof document !== 'undefined') {
           .map((p) => state.tasks.find((t) => t.id === p.taskId))
           .filter(Boolean)
           .concat([task]);
-        await gcalApi('/calendars/primary/events/' + existing.eventId, { method: 'PATCH', body: JSON.stringify({ description: eventDescription(mates) }) });
+        await gcalApi('/calendars/' + encodeURIComponent(calId()) + '/events/' + existing.eventId, { method: 'PATCH', body: JSON.stringify({ description: eventDescription(mates) }) });
         state.planned.push({ taskId: task.id, date: date, freq: task.freq, eventId: existing.eventId, demo: false, plannedAt: now });
         save();
         showToast(`📅 “${task.title}” toegevoegd aan de bundel op ${date}.`, null);
@@ -1003,7 +1026,37 @@ if (typeof document !== 'undefined') {
 
   /* ----- Google Calendar (client-side OAuth, alleen in browser) ----- */
 
-  const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file';
+  const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file';
+  const SCHOONMAAK_CALENDAR = 'Schoonmaak';
+
+  function calId() {
+    return state.gcalCalendarId || 'primary';
+  }
+
+  async function ensureSchoonmaakCalendar() {
+    if (state.gcalCalendarId) {
+      try {
+        await gcalApi('/calendars/' + encodeURIComponent(state.gcalCalendarId));
+        return state.gcalCalendarId;
+      } catch (e) { state.gcalCalendarId = null; }
+    }
+    const list = await gcalApi('/users/me/calendarList?maxResults=250');
+    const found = (list.items || []).find((c) => (c.summary || '').trim().toLowerCase() === SCHOONMAAK_CALENDAR.toLowerCase());
+    if (found) {
+      state.gcalCalendarId = found.id;
+      save();
+      return found.id;
+    }
+    const created = await gcalApi('/calendars', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ summary: SCHOONMAAK_CALENDAR }),
+    });
+    state.gcalCalendarId = created.id;
+    save();
+    showToast(`📅 Agenda “${SCHOONMAAK_CALENDAR}” aangemaakt in Google Calendar.`, null);
+    return created.id;
+  }
   const BACKUP_FILENAME = 'schoonmaakquest-backup.json';
   let backupTimer = null;
 
@@ -1150,9 +1203,24 @@ if (typeof document !== 'undefined') {
     });
   }
 
-  async function gcalFetchBusy(timeMin, timeMax) {
-    const data = await gcalApi('/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin=' + encodeURIComponent(timeMin) + '&timeMax=' + encodeURIComponent(timeMax));
-    return busyFromEvents(data.items || []);
+  async function gcalFetchBusyAll(timeMin, timeMax) {
+    let calIds = ['primary'];
+    try {
+      const list = await gcalApi('/users/me/calendarList?maxResults=250');
+      if (list.items && list.items.length) {
+        calIds = list.items.map((c) => c.id).filter((id) => id !== state.gcalCalendarId);
+        if (!calIds.includes('primary')) calIds.unshift('primary');
+      }
+    } catch (e) { /* val terug op primary */ }
+    const busy = {};
+    for (const id of calIds) {
+      try {
+        const data = await gcalApi('/calendars/' + encodeURIComponent(id) + '/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin=' + encodeURIComponent(timeMin) + '&timeMax=' + encodeURIComponent(timeMax));
+        const b = busyFromEvents(data.items || []);
+        for (const day of Object.keys(b)) busy[day] = (busy[day] || 0) + b[day];
+      } catch (e) { /* sla agenda over bij fout */ }
+    }
+    return busy;
   }
 
   function eventDescription(tasks) {
@@ -1172,7 +1240,7 @@ if (typeof document !== 'undefined') {
       start: { date: date },
       end: { date: end },
     };
-    const ev = await gcalApi('/calendars/primary/events', { method: 'POST', body: JSON.stringify(body) });
+    const ev = await gcalApi('/calendars/' + encodeURIComponent(calId()) + '/events', { method: 'POST', body: JSON.stringify(body) });
     return ev.id;
   }
 
@@ -1201,6 +1269,58 @@ if (typeof document !== 'undefined') {
       .catch((err) => showToast('Sync mislukt: ' + err.message, null));
   }
 
+  async function removeTaskFromCalendar(task) {
+    const entries = state.planned.filter((p) => p.taskId === task.id);
+    if (!entries.length) return;
+    if (gcalToken) {
+      const eventIds = [...new Set(entries.filter((p) => p.eventId).map((p) => p.eventId))];
+      for (const eid of eventIds) {
+        const mates = state.planned
+          .filter((x) => x.eventId === eid && x.taskId !== task.id)
+          .map((x) => state.tasks.find((t) => t.id === x.taskId))
+          .filter(Boolean);
+        try {
+          if (mates.length) {
+            await gcalApi('/calendars/' + encodeURIComponent(calId()) + '/events/' + eid, { method: 'PATCH', body: JSON.stringify({ description: eventDescription(mates) }) });
+          } else {
+            await gcalApi('/calendars/' + encodeURIComponent(calId()) + '/events/' + eid, { method: 'DELETE' });
+          }
+        } catch (e) { /* event was al verwijderd */ }
+      }
+    }
+    state.planned = state.planned.filter((p) => p.taskId !== task.id);
+    save();
+  }
+
+  async function replanMonth() {
+    if (!gcalToken && state.gcalClientId) {
+      try { await gcalConnectSilent(state.gcalClientId); }
+      catch (e) {
+        try { await gcalConnect(state.gcalClientId); }
+        catch (e2) { showToast('Verbinding mislukt: ' + e2.message, null); return; }
+      }
+      render();
+    }
+    if (!gcalToken) { showToast('Verbind eerst met Google (📅 Agenda).', null); return; }
+    const now = Date.now();
+    const d = new Date(now);
+    const todayIso = isoDate(d.getFullYear(), d.getMonth(), d.getDate());
+    const future = state.planned.filter((p) => p.date >= todayIso);
+    const eventIds = [...new Set(future.filter((p) => p.eventId).map((p) => p.eventId))];
+    for (const eid of eventIds) {
+      try { await gcalApi('/calendars/' + encodeURIComponent(calId()) + '/events/' + eid, { method: 'DELETE' }); } catch (e) { /* al weg */ }
+    }
+    state.planned = state.planned.filter((p) => p.date < todayIso);
+    save();
+    showToast('🧹 Toekomstige schoonmaak-events verwijderd, opnieuw spreiden…', null);
+    try {
+      const r = await syncCalendar(false);
+      showToast(`✅ Opnieuw gespreid: ${r.created} klussen ingepland in agenda “${SCHOONMAAK_CALENDAR}”.`, null);
+    } catch (err) {
+      showToast('Herplan mislukt: ' + err.message, null);
+    }
+  }
+
   async function syncCalendar(demo) {
     const now = Date.now();
     const nowD = new Date(now);
@@ -1214,12 +1334,13 @@ if (typeof document !== 'undefined') {
     } else {
       const timeMin = new Date(y, monthsNeeded[0], 1).toISOString();
       const timeMax = new Date(y, monthsNeeded[monthsNeeded.length - 1] + 1, 1).toISOString();
-      const busy = await gcalFetchBusy(timeMin, timeMax);
+      const busy = await gcalFetchBusyAll(timeMin, timeMax);
       for (const day of Object.keys(busy)) {
         const mk = day.slice(0, 7);
         busyByMonth[mk] = busyByMonth[mk] || {};
         busyByMonth[mk][day] = busy[day];
       }
+      await ensureSchoonmaakCalendar();
     }
     const plannedKeys = state.planned.map((p) => p.taskId + '@' + p.date);
     const assignments = planMonth(state.tasks, (t) => taskStats(state, t, now), now, busyByMonth, plannedKeys);
@@ -1286,14 +1407,15 @@ if (typeof document !== 'undefined') {
       ${earlyMonth && state.lastPlanMonth !== mk ? '<div class="empty">🎯 Begin van de maand en nog niet ingepland — plan deze maand! Maandelijkse en kwartaal-taken worden gespreid over je minst drukke dagen.</div>' : ''}
       <div class="card" style="margin-bottom:14px">
         <h3 style="margin-top:0">Google Calendar-koppeling</h3>
-        <p class="room-sub">Wekelijkse/2-wekelijkse taken komen op hun vervaldatum in je agenda. Maandelijkse en kwartaal-taken worden op de 1ste van de maand verdeeld over de dagen met de minste afspraken in je Google Agenda. Dagelijkse taken zet ik niet in je agenda.</p>
+        <p class="room-sub">Events komen in een aparte agenda <b>“Schoonmaak”</b> in je Google Calendar (wordt automatisch aangemaakt). Wekelijkse/2-wekelijkse taken worden gespreid over de komende week, maandelijkse over de maand en kwartaal-taken over het kwartaal — steeds over de dagen met de minste afspraken in <i>al</i> je agenda's (incl. Work). Dagelijkse taken zet ik niet in de agenda. Bij het afvinken van een taak in de app wordt het bijbehorende event automatisch uit “Schoonmaak” verwijderd.</p>
         <form class="form" id="gcal-form">
           <input type="text" id="gcal-client-id" placeholder="Google OAuth Client ID (zie README)" value="${esc(state.gcalClientId || '')}" />
           <button type="submit">${gcalToken ? '🔁 Opnieuw verbinden' : '🔗 Verbind met Google'}</button>
         </form>
         <div class="settings-actions">
           <button class="btn secondary" data-action="plan-demo">🗓️ Plan deze maand (demo)</button>
-          <button class="btn" data-action="plan-real">☁️ Sync naar Google Agenda</button>
+          <button class="btn" data-action="plan-real">☁️ Sync naar agenda “Schoonmaak”</button>
+          <button class="btn secondary" data-action="replan" title="Verwijder alle toekomstige schoonmaak-events en plan opnieuw gespreid">🧹 Opschonen + opnieuw spreiden</button>
         </div>
         <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google (Calendar + Drive-backup).' : state.gcalClientId ? 'Client ID opgeslagen — de app probeert automatisch (stilletjes) te verbinden. Lukt dat niet? Klik dan één keer “Verbind met Google” (per apparaat).' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
       </div>
@@ -1427,6 +1549,8 @@ if (typeof document !== 'undefined') {
         .catch((err) => showToast('Plannen mislukt: ' + err.message, null));
     } else if (action === 'plan-real') {
       planReal();
+    } else if (action === 'replan') {
+      replanMonth();
     } else if (action === 'lock-now') {
       lockNow();
     } else if (action === 'show-progress') {

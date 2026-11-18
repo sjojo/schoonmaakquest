@@ -55,8 +55,9 @@ Op het tabblad **📅 Agenda** verbind je de app met je Google Agenda (client-si
 3. Plak de Client ID in de app (tabblad 📅 Agenda) en klik **Verbind met Google** → log in en geef toestemming
 
 Daarna:
-- **Wekelijkse/2-wekelijkse taken** die te doen zijn komen als all-day event op hun vervaldatum in je agenda
-- **Terugkerende taken automatisch**: bij het afvinken van een wekelijkse/maandelijkse/kwartaal-taak wordt meteen de **volgende occurrence** als event ingepland
+- Events komen in een aparte agenda **“Schoonmaak”** in je Google Calendar (wordt automatisch aangemaakt bij de eerste sync)
+- **Spreiding**: wekelijkse/2-wekelijkse taken die te doen zijn worden gespreid over de komende week; maandelijkse over de maand; kwartaal-taken over het kwartaal — steeds over de dagen met de minste afspraken in **al je agenda's** (incl. Work; de “S schoonmaak”-agenda zelf telt niet mee). Bundels (sanitair/stofzuigen/planten) blijven per dag als één event samen. Taken met een deadline blijven op die datum
+- **Wederzijds**: bij het afvinken van een taak in de app wordt het bijbehorende event automatisch uit “Schoonmaak” verwijderd (of uit de bundel-description gehaald); bij het afvinken van een terugkerende taak wordt meteen de **volgende occurrence** ingepland. Met **🧹 Opschonen + opnieuw spreiden** verwijder je alle toekomstige schoonmaak-events en plan je opnieuw
 - **Iedere 1ste van de maand wordt opnieuw ingepland**: als je de app in de eerste 3 dagen van de maand opent (en verbonden bent), worden maandelijkse taken gespreid over de minst drukke dagen van die maand en kwartaal-taken (in jan/apr/jul/okt) over het hele kwartaal. Handmatig kan altijd via "Sync naar Google Agenda". Dagelijkse taken zet ik niet in je agenda
 - Zonder verbinding: **"Plan deze maand (demo)"** toont de spreiding met een fictieve agenda
 - Geplande items staan in `state.planned` (dus ook in je JSON-backup); dubbelen worden voorkomen

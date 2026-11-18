@@ -172,7 +172,7 @@ function makeState() {
   const assignments = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, []);
   const weekly = assignments.find((a) => a.taskId === 't2');
   assert.ok(weekly, 'wekelijkse taak gepland');
-  assert.strictEqual(weekly.date, '2025-06-15', 'nooit gedaan => vandaag');
+  assert.ok(weekly.date >= '2025-06-15' && weekly.date <= '2025-06-21', 'wekelijks gespreid over komende week, niet alles op vandaag: ' + weekly.date);
   assert.ok(!assignments.some((a) => a.taskId === 't1'), 'dagelijkse taak niet in agenda');
   const monthly = assignments.filter((a) => a.freq === 'monthly');
   assert.strictEqual(monthly.length, 1);
@@ -259,6 +259,23 @@ function makeState() {
   a = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, []);
   const m = a.find((x) => x.taskId === 't3');
   assert.ok(m.date >= '2026-01-05' && m.date <= '2026-01-31', 'verleden deadline genegeerd, spread gebruikt');
+}
+
+// 19. Wekelijkse taken: zelfde bundel = zelfde dag, verschillende bundels gespreid over de week
+{
+  const s = makeState();
+  s.tasks = [
+    { id: 'a', roomId: 'r1', title: 'Wc schoonmaken', freq: 'weekly', points: 10, group: 'sanitair' },
+    { id: 'b', roomId: 'r1', title: 'Douche schoonmaken', freq: 'weekly', points: 15, group: 'sanitair' },
+    { id: 'c', roomId: 'r1', title: 'Stofzuigen', freq: 'weekly', points: 10, group: 'stofzuigen' },
+  ];
+  const now = Date.parse('2026-01-05T12:00:00');
+  const busy = { '2026-01': demoBusyMap(2026, 0) };
+  const a = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, []);
+  const dateOf = (id) => a.find((x) => x.taskId === id).date;
+  assert.strictEqual(dateOf('a'), dateOf('b'), 'zelfde bundel blijft op één dag');
+  assert.notStrictEqual(dateOf('a'), dateOf('c'), 'verschillende bundels worden gespreid');
+  for (const x of a) assert.ok(x.date >= '2026-01-05' && x.date <= '2026-01-11', 'binnen komend interval: ' + x.date);
 }
 
 console.log('Alle logica-tests geslaagd ✔');
