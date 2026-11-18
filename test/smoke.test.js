@@ -88,6 +88,16 @@ assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
   assert.ok(stored.planned && stored.planned.length > 0, 'demo-plan slaat planning op');
   assert.ok(stored.planned.every((p) => /\d{4}-\d{2}-\d{2}/.test(p.date)), 'planning heeft geldige datums');
 
+  // 8. Progress-overlay, vandaag-filter en taak-edit renderen
+  click('show-progress');
+  assert.ok(elements['progress-card'].innerHTML.includes('Level'), 'progress-overlay rendert');
+  click('close-progress');
+  click('today-tasks');
+  assert.ok(elements['view-tasks'].innerHTML.includes('Te doen'), 'vandaag-filter actief in taken-tab');
+  click('edit-task', { id: stored.tasks[0].id });
+  assert.strictEqual(elements['edit-task-title'].value, stored.tasks[0].title, 'edit-formulier gevuld met taak');
+  click('close-edit');
+
   console.log('Smoke-test geslaagd ✔');
   process.exit(0);
 })();

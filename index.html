@@ -3,27 +3,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>SchoonmaakQuest — gamified schoonmaak-tracker</title>
+  <title>Schoonmaak Huis Sjors — gamified schoonmaak-tracker</title>
   <link rel="stylesheet" href="styles.css" />
   <link rel="manifest" href="manifest.webmanifest" />
   <meta name="theme-color" content="#15803d" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="SchoonmaakQuest" />
+  <meta name="apple-mobile-web-app-title" content="Huis Sjors" />
   <link rel="icon" type="image/png" href="icons/icon-192.png" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">🧹 SchoonmaakQuest</div>
+    <div class="brand">🧹 Schoonmaak Huis Sjors</div>
     <div class="player">
-      <div class="level-badge" id="levelBadge" title="Jouw level">Lv 1</div>
+      <button class="level-badge" id="levelBadge" data-action="show-progress" title="Klik voor je progressie">Lv 1</button>
       <div class="xp-wrap">
         <div class="xp-bar"><div class="xp-fill" id="xpFill"></div></div>
         <div class="xp-text" id="xpText">0 / 100 XP</div>
       </div>
-      <div class="chip" id="doneTodayChip" title="Klusjes vandaag gedaan">✅ 0 vandaag</div>
+      <button class="chip" id="doneTodayChip" data-action="today-tasks" title="Naar taken voor vandaag">✅ 0 vandaag</button>
     </div>
   </header>
 
@@ -52,11 +52,33 @@
   <div id="lock-overlay" class="lock-overlay hidden">
     <div class="lock-card">
       <div class="lock-icon">🧹</div>
-      <div class="lock-title">SchoonmaakQuest</div>
+      <div class="lock-title">Schoonmaak Huis Sjors</div>
       <p class="room-sub">Voer je PIN in om te ontgrendelen</p>
       <form id="lock-form" class="form" style="justify-content:center">
         <input type="password" id="lock-pin" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="PIN" style="max-width:140px;text-align:center" />
         <button type="submit">Ontgrendel</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="progress-overlay" class="lock-overlay hidden">
+    <div class="lock-card" id="progress-card"></div>
+  </div>
+
+  <div id="task-edit-overlay" class="lock-overlay hidden">
+    <div class="lock-card" style="max-width:420px;text-align:left">
+      <div class="lock-title" style="text-align:center">✏️ Taak aanpassen</div>
+      <form id="task-edit-form" class="form" style="flex-direction:column;align-items:stretch;background:transparent;border:none;box-shadow:none;padding:8px 0 0">
+        <input type="text" id="edit-task-title" required maxlength="80" placeholder="Titel" />
+        <select id="edit-task-room"></select>
+        <select id="edit-task-freq"></select>
+        <select id="edit-task-points"></select>
+        <select id="edit-task-group"><option value="">Geen agenda-bundel</option></select>
+        <label class="room-sub">Deadline (alleen bij wekelijks of langer): <input type="date" id="edit-task-deadline" style="margin-top:4px" /></label>
+        <div class="settings-actions" style="justify-content:center;margin-top:8px">
+          <button type="submit">💾 Opslaan</button>
+          <button type="button" class="btn secondary" data-action="close-edit">Annuleren</button>
+        </div>
       </form>
     </div>
   </div>

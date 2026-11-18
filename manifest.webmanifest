@@ -1,6 +1,6 @@
 {
-  "name": "SchoonmaakQuest",
-  "short_name": "SchoonmaakQuest",
+  "name": "Schoonmaak Huis Sjors",
+  "short_name": "Huis Sjors",
   "description": "Gamified schoonmaak-tracker voor je appartement, incl. Google Agenda-koppeling",
   "lang": "nl",
   "start_url": "./index.html",

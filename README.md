@@ -1,4 +1,4 @@
-# 🧹 SchoonmaakQuest
+# 🧹 Schoonmaak Huis Sjors
 
 Een gamified schoonmaak-tracker voor een appartement (standaard indeling ca. 60 m²).
 Volledig in het Nederlands, werkt offline, geen installatie nodig.
@@ -7,6 +7,13 @@ Volledig in het Nederlands, werkt offline, geen installatie nodig.
 
 Open `index.html` in je browser (dubbelklikken werkt). Alles draait lokaal;
 je voortgang wordt bewaard in `localStorage` van je browser.
+
+## Functies (overzicht)
+- Klik op de **level-badge** rechtsboven voor je progressie (XP, streaks, badges, kamers); klik op de **"vandaag"-chip** om direct naar de openstaande taken te gaan
+- **Kamers-tab** is klikbaar: klik een kamer om meteen haar taken te zien
+- Taken hebben een optionele **deadline** (alleen bij wekelijks of langer) — de planner zet de taak daarop in de agenda (wordt op de 1ste van de maand automatisch herpland)
+- Taken zijn achteraf **aanpasbaar** via de ✏️-knop (titel, kamer, frequentie, XP, bundel, deadline)
+- Agenda-**bundels**: combineerbare taken (sanitair / stofzuigen / planten) worden per dag als één event ingepland
 
 ## Wat kun je ermee?
 

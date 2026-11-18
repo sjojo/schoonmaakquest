@@ -192,7 +192,9 @@ function planMonth(tasks, statsOf, now, busyByMonth, plannedKeys) {
   for (const t of tasks) {
     if (t.freq !== 'weekly' && t.freq !== 'biweekly') continue;
     const st = statsOf(t);
-    if (st.due) push(t.id, nextDueDate(st, t.freq, now), t.freq);
+    if (!st.due) continue;
+    const date = t.deadline && t.deadline >= todayIso ? t.deadline : nextDueDate(st, t.freq, now);
+    push(t.id, date, t.freq);
   }
 
   const monthDays = [];
@@ -202,7 +204,13 @@ function planMonth(tasks, statsOf, now, busyByMonth, plannedKeys) {
     if (iso >= todayIso) monthDays.push(iso);
   }
   const monthly = tasks.filter((t) => t.freq === 'monthly' && !(statsOf(t).lastDone && sameMonth(statsOf(t).lastDone, y, m)));
-  for (const a of spreadOverDays(monthly.map((t) => ({ taskId: t.id, points: t.points })), monthDays, busyByMonth[monthKey(y, m)] || {}, assigned)) {
+  const mk = monthKey(y, m);
+  const hasOwnDeadline = (t, keys) => t.deadline && t.deadline >= todayIso && keys.has(t.deadline.slice(0, 7));
+  for (const t of monthly) {
+    if (hasOwnDeadline(t, new Set([mk]))) push(t.id, t.deadline, 'monthly');
+  }
+  const monthlyRest = monthly.filter((t) => !hasOwnDeadline(t, new Set([mk])));
+  for (const a of spreadOverDays(monthlyRest.map((t) => ({ taskId: t.id, points: t.points })), monthDays, busyByMonth[mk] || {}, assigned)) {
     push(a.taskId, a.date, 'monthly');
   }
 
@@ -219,7 +227,12 @@ function planMonth(tasks, statsOf, now, busyByMonth, plannedKeys) {
       }
     }
     const quarterly = tasks.filter((t) => (t.freq === 'quarterly' || t.freq === 'yearly') && !(statsOf(t).lastDone && sameMonth(statsOf(t).lastDone, y, m)));
-    for (const a of spreadOverDays(quarterly.map((t) => ({ taskId: t.id, points: t.points })), qDays, qBusy, assigned)) {
+    const qKeys = new Set(qMonths.map((qm) => monthKey(y, qm)));
+    for (const t of quarterly) {
+      if (hasOwnDeadline(t, qKeys)) push(t.id, t.deadline, 'quarterly');
+    }
+    const qRest = quarterly.filter((t) => !hasOwnDeadline(t, qKeys));
+    for (const a of spreadOverDays(qRest.map((t) => ({ taskId: t.id, points: t.points })), qDays, qBusy, assigned)) {
       push(a.taskId, a.date, 'quarterly');
     }
   }
@@ -448,10 +461,28 @@ if (typeof document !== 'undefined') {
     showToast('Laatste klus ongedaan gemaakt.', null);
   }
 
-  function addTask(title, roomId, freq, points, group) {
-    state.tasks.push({ id: uid(), roomId, title, freq, points: Number(points), group: group || null });
+  function addTask(title, roomId, freq, points, group, deadline) {
+    state.tasks.push({
+      id: uid(), roomId, title, freq, points: Number(points),
+      group: group || null,
+      deadline: freq === 'daily' ? null : (deadline || null),
+    });
     save();
     render();
+  }
+
+  function updateTask(id, fields) {
+    const t = state.tasks.find((x) => x.id === id);
+    if (!t) return;
+    t.title = fields.title;
+    t.roomId = fields.roomId;
+    t.freq = fields.freq;
+    t.points = Number(fields.points);
+    t.group = fields.group || null;
+    t.deadline = fields.freq === 'daily' ? null : (fields.deadline || null);
+    save();
+    render();
+    showToast('✏️ Taak opgeslagen.', null);
   }
 
   function deleteTask(taskId) {
@@ -551,10 +582,12 @@ if (typeof document !== 'undefined') {
             ${t.group ? `<span class="tag">${esc(GROUPS[t.group] || t.group)}</span>` : ''}
             <span class="tag freq">${freq.label}</span>
             <span class="tag pts">⭐ ${t.points}</span>
+            ${t.deadline ? `<span class="tag deadline">⏰ ${esc(t.deadline)}</span>` : ''}
             ${st.streak > 1 ? `<span class="tag streak">🔥 ${st.streak}x</span>` : ''}
             ${st.due ? '<span class="tag due">te doen</span>' : `<span class="tag">klaar · ${fmtDate(st.lastDone)}</span>`}
           </div>
         </div>
+        <button class="icon-btn" data-action="edit-task" data-id="${t.id}" title="Taak aanpassen">✏️</button>
         <button class="icon-btn" data-action="delete-task" data-id="${t.id}" title="Taak verwijderen">🗑️</button>
       </div>`;
   }
@@ -604,7 +637,8 @@ if (typeof document !== 'undefined') {
 
   function renderTasks(now) {
     const el = document.getElementById('view-tasks');
-    const roomOptions = ['<option value="all"' + (roomFilter === 'all' ? ' selected' : '') + '>Alle kamers</option>']
+    const roomOptions = ['<option value="all"' + (roomFilter === 'all' ? ' selected' : '') + '>Alle kamers</option>',
+      '<option value="__vandaag__"' + (roomFilter === '__vandaag__' ? ' selected' : '') + '>📌 Te doen (vandaag)</option>']
       .concat(state.rooms.map((r) => `<option value="${r.id}"${roomFilter === r.id ? ' selected' : ''}>${esc(r.icon + ' ' + r.name)}</option>`))
       .join('');
 
@@ -617,7 +651,8 @@ if (typeof document !== 'undefined') {
       .map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
 
     let tasks = state.tasks.slice();
-    if (roomFilter !== 'all') tasks = tasks.filter((t) => t.roomId === roomFilter);
+    if (roomFilter === '__vandaag__') tasks = dueTasks(state, now).map((x) => x.task);
+    else if (roomFilter !== 'all') tasks = tasks.filter((t) => t.roomId === roomFilter);
     tasks.sort((a, b) => {
       const sa = taskStats(state, a, now);
       const sb = taskStats(state, b, now);
@@ -634,6 +669,7 @@ if (typeof document !== 'undefined') {
         <select id="new-task-freq">${freqOptions}</select>
         <select id="new-task-points">${pointsOptions}</select>
         <select id="new-task-group" title="Bundel in de agenda"><option value="">Geen agenda-bundel</option>${groupOptions}</select>
+        <label class="room-sub" title="Deadline (alleen voor wekelijks of langer)">⏰ <input type="date" id="new-task-deadline" /></label>
         <button type="submit">+ Toevoegen</button>
       </form>
       <div class="controls">
@@ -653,9 +689,17 @@ if (typeof document !== 'undefined') {
         document.getElementById('new-task-room').value,
         document.getElementById('new-task-freq').value,
         document.getElementById('new-task-points').value,
-        document.getElementById('new-task-group').value
+        document.getElementById('new-task-group').value,
+        document.getElementById('new-task-deadline').value
       );
     });
+    const freqSel = document.getElementById('new-task-freq');
+    const dlInput = document.getElementById('new-task-deadline');
+    if (freqSel && dlInput) {
+      const syncDl = () => { dlInput.disabled = freqSel.value === 'daily'; if (freqSel.value === 'daily') dlInput.value = ''; };
+      freqSel.addEventListener('change', syncDl);
+      syncDl();
+    }
     document.getElementById('room-filter').addEventListener('change', (e) => {
       roomFilter = e.target.value;
       render();
@@ -669,7 +713,7 @@ if (typeof document !== 'undefined') {
       const score = roomScore(state, r.id, now);
       const count = state.tasks.filter((t) => t.roomId === r.id).length;
       return `
-        <div class="task">
+        <div class="task room-row" data-action="filter-room" data-id="${r.id}" title="Bekijk taken van ${esc(r.name)}">
           <div class="room-icon">${esc(r.icon)}</div>
           <div class="task-body">
             <div class="task-title">${esc(r.name)}</div>
@@ -898,7 +942,8 @@ if (typeof document !== 'undefined') {
     if (!['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(task.freq)) return;
     const now = Date.now();
     const st = taskStats(state, task, now);
-    const date = nextDueDate(st, task.freq, now);
+    const todayIso = isoDate(new Date(now).getFullYear(), new Date(now).getMonth(), new Date(now).getDate());
+    const date = task.deadline && task.deadline >= todayIso ? task.deadline : nextDueDate(st, task.freq, now);
     const key = task.id + '@' + date;
     if (state.planned.some((p) => p.taskId + '@' + p.date === key)) return;
     const group = task.group || null;
@@ -987,7 +1032,7 @@ if (typeof document !== 'undefined') {
       const r = roomOf(t);
       return '• ' + t.title + ' (' + (r ? r.name : '-') + ') · ' + (FREQS[t.freq] ? FREQS[t.freq].label : t.freq) + ' · ⭐ ' + t.points + ' XP';
     });
-    return lines.join('\n') + '\n— SchoonmaakQuest';
+    return lines.join('\n') + '\n— Schoonmaak Huis Sjors';
   }
 
   async function gcalCreateEvent(summary, date, description) {
@@ -1118,6 +1163,73 @@ if (typeof document !== 'undefined') {
     });
   }
 
+  function renderProgress(now) {
+    const li = levelInfo(state);
+    const cleanRooms = state.rooms.filter((r) => roomScore(state, r.id, now) === 100).length;
+    const card = document.getElementById('progress-card');
+    if (!card) return;
+    card.innerHTML = `
+      <div class="lock-icon">🏆</div>
+      <div class="lock-title">Level ${li.level}</div>
+      <div class="xp-wrap" style="margin:10px auto;max-width:240px">
+        <div class="xp-bar" style="background:#e5e7eb"><div class="xp-fill" style="width:${Math.round(li.progress * 100)}%"></div></div>
+        <div class="xp-text" style="color:var(--muted)">${li.remaining} / ${li.need} XP naar level ${li.level + 1} · totaal ${li.xp} XP</div>
+      </div>
+      <div class="stat-grid" style="margin-top:12px">
+        <div class="card stat-card"><div class="stat-num">${state.history.length}</div><div class="stat-label">klussen totaal</div></div>
+        <div class="card stat-card"><div class="stat-num">🔥 ${bestStreak(state, now)}x</div><div class="stat-label">beste streak</div></div>
+        <div class="card stat-card"><div class="stat-num">${Object.keys(state.badges).length}/${BADGES.length}</div><div class="stat-label">badges</div></div>
+        <div class="card stat-card"><div class="stat-num">${cleanRooms}/${state.rooms.length}</div><div class="stat-label">kamers 100%</div></div>
+        <div class="card stat-card"><div class="stat-num">${doneToday(state, now)}</div><div class="stat-label">vandaag gedaan</div></div>
+        <div class="card stat-card"><div class="stat-num">${state.planned.length}</div><div class="stat-label">agenda-items gepland</div></div>
+      </div>
+      <div class="settings-actions" style="justify-content:center;margin-top:14px">
+        <button class="btn" data-action="close-progress">Sluiten</button>
+      </div>`;
+    document.getElementById('progress-overlay').classList.remove('hidden');
+  }
+
+  let editTaskId = null;
+
+  function openTaskEdit(taskId) {
+    const t = state.tasks.find((x) => x.id === taskId);
+    if (!t) return;
+    editTaskId = taskId;
+    document.getElementById('edit-task-title').value = t.title;
+    const roomSel = document.getElementById('edit-task-room');
+    roomSel.innerHTML = state.rooms.map((r) => `<option value="${r.id}">${esc(r.icon + ' ' + r.name)}</option>`).join('');
+    roomSel.value = t.roomId;
+    const freqSel = document.getElementById('edit-task-freq');
+    freqSel.innerHTML = Object.entries(FREQS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+    freqSel.value = t.freq;
+    const ptsSel = document.getElementById('edit-task-points');
+    ptsSel.innerHTML = POINT_OPTIONS.map((p) => `<option value="${p}">⭐ ${p} XP</option>`).join('');
+    ptsSel.value = String(t.points);
+    const grpSel = document.getElementById('edit-task-group');
+    grpSel.innerHTML = '<option value="">Geen agenda-bundel</option>' + Object.entries(GROUPS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+    grpSel.value = t.group || '';
+    const dl = document.getElementById('edit-task-deadline');
+    dl.value = t.deadline || '';
+    dl.disabled = t.freq === 'daily';
+    freqSel.onchange = () => { dl.disabled = freqSel.value === 'daily'; if (freqSel.value === 'daily') dl.value = ''; };
+    document.getElementById('task-edit-overlay').classList.remove('hidden');
+  }
+
+  function saveTaskEdit(e) {
+    e.preventDefault();
+    if (!editTaskId) return;
+    updateTask(editTaskId, {
+      title: document.getElementById('edit-task-title').value.trim(),
+      roomId: document.getElementById('edit-task-room').value,
+      freq: document.getElementById('edit-task-freq').value,
+      points: document.getElementById('edit-task-points').value,
+      group: document.getElementById('edit-task-group').value,
+      deadline: document.getElementById('edit-task-deadline').value,
+    });
+    document.getElementById('task-edit-overlay').classList.add('hidden');
+    editTaskId = null;
+  }
+
   function render() {
     const now = Date.now();
     renderHeader(now);
@@ -1167,6 +1279,19 @@ if (typeof document !== 'undefined') {
         .catch((err) => showToast('Sync mislukt: ' + err.message, null));
     } else if (action === 'lock-now') {
       lockNow();
+    } else if (action === 'show-progress') {
+      renderProgress(Date.now());
+    } else if (action === 'close-progress') {
+      document.getElementById('progress-overlay').classList.add('hidden');
+    } else if (action === 'today-tasks') {
+      currentTab = 'tasks';
+      roomFilter = '__vandaag__';
+      render();
+    } else if (action === 'edit-task') {
+      openTaskEdit(el.dataset.id);
+    } else if (action === 'close-edit') {
+      document.getElementById('task-edit-overlay').classList.add('hidden');
+      editTaskId = null;
     }
   });
 
@@ -1178,6 +1303,13 @@ if (typeof document !== 'undefined') {
   const lockForm = document.getElementById('lock-form');
   if (lockForm) lockForm.addEventListener('submit', (e) => { e.preventDefault(); tryUnlock(); });
   if (state.pinEnabled && !isUnlocked()) showLock();
+
+  const editForm = document.getElementById('task-edit-form');
+  if (editForm) editForm.addEventListener('submit', saveTaskEdit);
+  const progressOverlay = document.getElementById('progress-overlay');
+  if (progressOverlay) progressOverlay.addEventListener('click', (e) => {
+    if (e.target === progressOverlay) progressOverlay.classList.add('hidden');
+  });
 
   if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof location !== 'undefined' && location.protocol.indexOf('http') === 0) {
     navigator.serviceWorker.register('sw.js').catch(() => {});

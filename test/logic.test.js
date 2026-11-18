@@ -244,4 +244,21 @@ function makeState() {
   assert.ok(Object.keys(GROUPS).length >= 3);
 }
 
+// 18. Deadline wint in de planner (weekly en monthly); deadline in het verleden wordt genegeerd
+{
+  const s = makeState();
+  const now = Date.parse('2026-01-05T12:00:00');
+  const busy = { '2026-01': demoBusyMap(2026, 0) };
+  s.tasks[1].deadline = '2026-01-20'; // t2 weekly
+  let a = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, []);
+  assert.strictEqual(a.find((x) => x.taskId === 't2').date, '2026-01-20', 'weekly deadline wint');
+  s.tasks[2].deadline = '2026-01-28'; // t3 monthly
+  a = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, []);
+  assert.strictEqual(a.find((x) => x.taskId === 't3').date, '2026-01-28', 'monthly deadline wint');
+  s.tasks[2].deadline = '2025-12-31'; // in het verleden
+  a = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, []);
+  const m = a.find((x) => x.taskId === 't3');
+  assert.ok(m.date >= '2026-01-05' && m.date <= '2026-01-31', 'verleden deadline genegeerd, spread gebruikt');
+}
+
 console.log('Alle logica-tests geslaagd ✔');
