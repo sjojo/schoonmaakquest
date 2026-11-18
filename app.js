@@ -445,6 +445,19 @@ if (typeof document !== 'undefined') {
     const task = state.tasks.find((t) => t.id === taskId);
     if (!task) return;
     const now = Date.now();
+    const st = taskStats(state, task, now);
+    if (!st.due) {
+      // Taak is al klaar: klik op ✓ zet de laatste afronding van deze taak terug (toggle/undo)
+      const entries = taskEntries(state, taskId);
+      if (entries.length) {
+        const last = entries[entries.length - 1];
+        state.history = state.history.filter((h) => h.id !== last.id);
+        save();
+        render();
+        showToast(`↩️ “${task.title}” teruggezet (−${last.points} XP).`, null);
+      }
+      return;
+    }
     state.history.push({ id: uid(), taskId, ts: now, points: task.points });
     const unlocked = checkBadges(state, now);
     save();
@@ -577,7 +590,7 @@ if (typeof document !== 'undefined') {
     const freq = FREQS[t.freq] || FREQS.weekly;
     return `
       <div class="task ${st.due ? '' : 'done'}">
-        <button class="check-btn" data-action="complete" data-id="${t.id}" title="Afvinken">${st.due ? '' : '✓'}</button>
+        <button class="check-btn" data-action="complete" data-id="${t.id}" title="${st.due ? 'Afvinken' : 'Terugzetten (undo)'}">${st.due ? '' : '✓'}</button>
         <div class="task-body">
           <div class="task-title">${esc(t.title)}</div>
           <div class="task-meta">
