@@ -24,13 +24,39 @@ je voortgang wordt bewaard in `localStorage` van je browser.
 - **Backup**: exporteer/importeer je data als JSON (tabblad ⚙️ Instellingen),
   handig om mee te nemen naar een andere browser of telefoon.
 
+## 📅 Google Calendar-koppeling
+
+Op het tabblad **📅 Agenda** verbind je de app met je Google Agenda (client-side OAuth; er draait geen server — de app vraagt alleen toegang tot agenda-events):
+
+1. Maak een project aan in [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → Enable APIs** → "Google Calendar API" → Enable
+2. **Credentials → Create Credentials → OAuth client ID** → type *Web application* → bij **Authorized JavaScript origins** voeg toe: `http://localhost`, `https://sjojo.github.io` en `https://schoonmaak.spstuur.nl` → Create → kopieer de **Client ID**
+3. Plak de Client ID in de app (tabblad 📅 Agenda) en klik **Verbind met Google** → log in en geef toestemming
+
+Daarna:
+- **Wekelijkse/2-wekelijkse taken** die te doen zijn komen als all-day event op hun vervaldatum in je agenda
+- **Maandelijkse en kwartaal-taken** worden op de **1ste van de maand** gespreid over de dagen met de minste afspraken in je agenda (kwartaal-taken in de eerste maand van het kwartaal, gespreid over het hele kwartaal). Dagelijkse taken zet ik niet in je agenda
+- Zonder verbinding: **"Plan deze maand (demo)"** toont de spreiding met een fictieve agenda
+- Geplande items staan in `state.planned` (dus ook in je JSON-backup); dubbelen worden voorkomen
+
+## 🌐 Hosting op je eigen subdomein (bijv. schoonmaak.spstuur.nl)
+
+De app is een static site; automatische updates gaan via GitHub Actions (`.github/workflows/pages.yml` deployt elke push naar `main` naar GitHub Pages). Stappen:
+
+1. Merge de PR naar `main`
+2. Repo **Settings → Pages → Build and deployment → Source: GitHub Actions** (de workflow regelt de rest)
+3. Bij je DNS-provider van `spstuur.nl`: CNAME-record `schoonmaak` → `sjojo.github.io`
+4. Repo **Settings → Pages → Custom domain**: `schoonmaak.spstuur.nl` → Save (wacht op DNS-verificatie; vink evt. "Enforce HTTPS" aan)
+
+Daarna live op `https://schoonmaak.spstuur.nl/` — elke push naar `main` rolt automatisch uit. Let op: `https://schoonmaak.spstuur.nl` moet ook als Authorized JavaScript origin in Google Cloud Console staan, anders werkt de Agenda-koppeling niet vanaf dat domein.
+
 ## Bestanden
 
 - `index.html` — pagina
 - `styles.css` — styling
 - `app.js` — alle logica + UI (de pure logica is exporteerbaar voor tests)
-- `test/logic.test.js` — unittests voor due/streak/XP/score/badges (`node test/logic.test.js`)
+- `test/logic.test.js` — unittests voor due/streak/XP/score/badges + agenda-planner (`node test/logic.test.js`)
 - `test/smoke.test.js` — smoke-test van de UI met een DOM-stub (`node test/smoke.test.js`)
+- `.github/workflows/pages.yml` — automatische deploy naar GitHub Pages bij push naar `main`
 
 ## Aanpassen
 

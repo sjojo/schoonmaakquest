@@ -44,7 +44,7 @@ function click(action, extra = {}) {
 }
 
 // 1. Alle tabbladen renderen zonder crash
-for (const tab of ['dashboard', 'tasks', 'rooms', 'badges', 'stats', 'settings']) {
+for (const tab of ['dashboard', 'tasks', 'rooms', 'badges', 'stats', 'agenda', 'settings']) {
   click('tab', { tab });
 }
 assert.ok(elements['view-dashboard'].innerHTML.includes('Kamers'), 'dashboard rendert kamers');
@@ -71,13 +71,23 @@ assert.strictEqual(stored.history.length, 0);
 click('filter-room', { id: stored.rooms[0].id });
 assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
 
-// 6. Taak verwijderen
-click('reset');
-const before = stored.tasks.length;
-const victim = stored.tasks[1].id;
-click('delete-task', { id: victim });
-assert.strictEqual(stored.tasks.length, before - 1, 'taak verwijderd');
-assert.ok(!stored.tasks.some((t) => t.id === victim), 'taak weg uit state');
+(async () => {
+  // 6. Taak verwijderen
+  click('reset');
+  const before = stored.tasks.length;
+  const victim = stored.tasks[1].id;
+  click('delete-task', { id: victim });
+  assert.strictEqual(stored.tasks.length, before - 1, 'taak verwijderd');
+  assert.ok(!stored.tasks.some((t) => t.id === victim), 'taak weg uit state');
 
-console.log('Smoke-test geslaagd ✔');
-process.exit(0);
+  // 7. Agenda-tab rendert en demo-plan slaat planning op
+  click('tab', { tab: 'agenda' });
+  assert.ok(elements['view-agenda'].innerHTML.includes('Google Calendar'), 'agenda rendert');
+  click('plan-demo');
+  await new Promise((r) => setTimeout(r, 50));
+  assert.ok(stored.planned && stored.planned.length > 0, 'demo-plan slaat planning op');
+  assert.ok(stored.planned.every((p) => /\d{4}-\d{2}-\d{2}/.test(p.date)), 'planning heeft geldige datums');
+
+  console.log('Smoke-test geslaagd ✔');
+  process.exit(0);
+})();
