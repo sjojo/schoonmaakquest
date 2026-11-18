@@ -995,12 +995,7 @@ if (typeof document !== 'undefined') {
   let backupTimer = null;
 
   async function gdriveApi(path, options) {
-    const resp = await fetch('https://www.googleapis.com' + path, {
-      ...(options || {}),
-      headers: { Authorization: 'Bearer ' + gcalToken, ...((options && options.headers) || {}) },
-    });
-    if (!resp.ok) throw new Error('Drive API fout ' + resp.status);
-    return resp.json();
+    return gTokenApi('https://www.googleapis.com' + path, options || {});
   }
 
   async function driveFindBackup() {
@@ -1104,13 +1099,41 @@ if (typeof document !== 'undefined') {
     });
   }
 
-  async function gcalApi(path, options) {
-    const resp = await fetch('https://www.googleapis.com/calendar/v3' + path, {
-      ...(options || {}),
-      headers: { Authorization: 'Bearer ' + gcalToken, 'Content-Type': 'application/json', ...((options && options.headers) || {}) },
+  async function gcalConnectSilent(clientId) {
+    await gcalLoadScript();
+    return new Promise((resolve, reject) => {
+      const client = window.google.accounts.oauth2.initTokenClient({
+        client_id: clientId,
+        scope: GCAL_SCOPE,
+        prompt: '',
+        callback: (resp) => {
+          if (resp && resp.error) reject(new Error(resp.error));
+          else { setGcalToken(resp.access_token); resolve(resp.access_token); }
+        },
+      });
+      client.requestAccessToken({ prompt: '' });
     });
-    if (!resp.ok) throw new Error('Google Calendar API fout ' + resp.status);
+  }
+
+  async function gTokenApi(url, options, retried) {
+    const resp = await fetch(url, {
+      ...(options || {}),
+      headers: { Authorization: 'Bearer ' + gcalToken, ...((options && options.headers) || {}) },
+    });
+    if (resp.status === 401 && !retried && state.gcalClientId) {
+      setGcalToken(null);
+      await gcalConnectSilent(state.gcalClientId);
+      return gTokenApi(url, options, true);
+    }
+    if (!resp.ok) throw new Error('Google API fout ' + resp.status);
     return resp.json();
+  }
+
+  async function gcalApi(path, options) {
+    return gTokenApi('https://www.googleapis.com/calendar/v3' + path, {
+      ...(options || {}),
+      headers: { 'Content-Type': 'application/json', ...((options && options.headers) || {}) },
+    });
   }
 
   async function gcalFetchBusy(timeMin, timeMax) {
@@ -1233,7 +1256,7 @@ if (typeof document !== 'undefined') {
           <button class="btn secondary" data-action="plan-demo">🗓️ Plan deze maand (demo)</button>
           <button class="btn" data-action="plan-real" ${gcalToken ? '' : 'disabled style="opacity:.5;cursor:not-allowed"'}>☁️ Sync naar Google Agenda</button>
         </div>
-        <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google Calendar.' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
+        <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google (Calendar + Drive-backup).' : state.gcalClientId ? 'Client ID opgeslagen — de app probeert automatisch (stilletjes) te verbinden. Lukt dat niet? Klik dan één keer “Verbind met Google” (per apparaat).' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
       </div>
       <h3>Gepland deze maand (${bundles.length} agenda-items, ${planned.length} taken)</h3>
       <div class="list">${rows || '<div class="empty">Nog niets gepland voor ' + mk + '. Klik op “Plan deze maand”.</div>'}</div>`;
@@ -1388,10 +1411,24 @@ if (typeof document !== 'undefined') {
     }
   });
 
-  const bootD = new Date();
-  if (bootD.getDate() <= 3 && state.lastPlanMonth !== monthKey(bootD.getFullYear(), bootD.getMonth()) && gcalToken) {
-    syncCalendar(false).catch(() => {});
+  function maybeAutoPlan() {
+    const d = new Date();
+    if (d.getDate() <= 3 && state.lastPlanMonth !== monthKey(d.getFullYear(), d.getMonth()) && gcalToken) {
+      syncCalendar(false).catch(() => {});
+    }
   }
+
+  async function bootGoogle() {
+    if (state.gcalClientId && !gcalToken) {
+      try {
+        await gcalConnectSilent(state.gcalClientId);
+        render();
+        tryDriveRestore();
+      } catch (e) { /* stille consent niet gelukt -> handmatig via knop in 📅 Agenda */ }
+    }
+    maybeAutoPlan();
+  }
+  if (!(state.pinEnabled && !isUnlocked())) bootGoogle();
 
   const lockForm = document.getElementById('lock-form');
   if (lockForm) lockForm.addEventListener('submit', (e) => { e.preventDefault(); tryUnlock(); });

@@ -31,6 +31,13 @@ je voortgang wordt bewaard in `localStorage` van je browser.
 - **Backup**: exporteer/importeer je data als JSON (tabblad ⚙️ Instellingen).
   Daarnaast: **automatische backup naar Google Drive** (`schoonmaakquest-backup.json`) na elke wijziging zodra je met Google verbonden bent — je progress blijft zo bewaard bij elke deploy/push, op elk apparaat en elk domein (bij lege lokale data wordt de Drive-backup automatisch hersteld). Zet de automatische backup uit via de checkbox in ⚙️.
 
+## 📱 Meerdere apparaten
+
+De app draait op één gedeelde URL (GitHub Pages / je subdomein), dus overal hetzelfde adres. Zo blijft alles gesynchroniseerd:
+- **Progress/data**: automatische backup naar Google Drive na elke wijziging + auto-herstel bij lege lokale data → je klussen, XP, streaks en planning volgen je mee naar elk apparaat
+- **Google-koppeling**: per apparaat één keer "Verbind met Google" (OAuth-consent); daarna verbindt de app zichzelf stil (`prompt: ''`) bij elke start en bij een verlopen token (401 → stille re-auth). Let op: elk domein moet in Cloud Console als Authorized JavaScript origin staan (`https://sjojo.github.io`, `https://schoonmaak.spstuur.nl`, `http://localhost`)
+- **PIN-lock** staat los per apparaat (localStorage)
+
 ## 📱 iPhone-web-app (PWA)
 
 De app is al een zogenoemde **PWA**: op je iPhone open je de site in Safari en kiest **Deel-knop → "Zet op beginscherm"**. Dan krijg je een eigen app-icoon, start de app zonder Safari-balken (standalone) en werkt hij offline dankzij de serviceworker (`sw.js`). Nodig: `manifest.webmanifest` + icons in `icons/` — die staan al in de repo. Na een deploy via GitHub Pages even de pagina verversen op je iPhone, anders houdt Safari de oude cache vast.
