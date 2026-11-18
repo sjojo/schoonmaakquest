@@ -353,7 +353,7 @@ function seedState() {
     const r = GROUP_RULES.find((x) => x.match(t));
     if (r) t.group = r.group;
   }
-  return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '', pinEnabled: false, pinHash: null };
+  return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '', pinEnabled: false, pinHash: null, driveBackup: true, lastDriveBackup: null };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
@@ -389,6 +389,8 @@ if (typeof document !== 'undefined') {
           if (!s.gcalClientId) s.gcalClientId = '';
           if (typeof s.pinEnabled !== 'boolean') s.pinEnabled = false;
           if (!s.pinHash) s.pinHash = null;
+          if (typeof s.driveBackup !== 'boolean') s.driveBackup = true;
+          if (!s.lastDriveBackup) s.lastDriveBackup = null;
           return s;
         }
       }
@@ -398,6 +400,7 @@ if (typeof document !== 'undefined') {
 
   function save() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    scheduleDriveBackup();
   }
 
   function esc(s) {
@@ -821,7 +824,13 @@ if (typeof document !== 'undefined') {
             <label class="btn secondary" style="cursor:pointer">⬆️ Importeer backup
               <input type="file" id="import-file" accept="application/json" class="hidden" />
             </label>
+            <button class="btn secondary" data-action="drive-backup">☁️ Nu backup naar Google Drive</button>
           </div>
+          <label class="room-sub" style="display:flex;gap:8px;align-items:center;margin-top:10px;cursor:pointer">
+            <input type="checkbox" id="drive-backup-toggle" ${state.driveBackup !== false ? 'checked' : ''} />
+            Automatisch backuppen naar Google Drive na elke wijziging (progress blijft zo bewaard, ook na nieuwe deploys of op een ander apparaat/domein)
+            ${state.lastDriveBackup ? ` · laatste backup: ${fmtDate(state.lastDriveBackup)}` : ''}
+          </label>
         </div>
         <div class="card">
           <h3 style="margin-top:0">🔒 PIN-lock</h3>
@@ -851,6 +860,12 @@ if (typeof document !== 'undefined') {
     document.getElementById('import-file').addEventListener('change', (e) => {
       if (e.target.files && e.target.files[0]) importData(e.target.files[0]);
       e.target.value = '';
+    });
+    const driveToggle = document.getElementById('drive-backup-toggle');
+    if (driveToggle) driveToggle.addEventListener('change', (e) => {
+      state.driveBackup = e.target.checked;
+      save();
+      showToast(state.driveBackup ? '☁️ Automatische Drive-backup aan.' : 'Automatische Drive-backup uit.', null);
     });
     const setupForm = document.getElementById('pin-setup-form');
     if (setupForm) setupForm.addEventListener('submit', async (e) => {
@@ -905,6 +920,7 @@ if (typeof document !== 'undefined') {
     if (state.pinEnabled && h === state.pinHash) {
       hideLock();
       showToast('🔓 Ontgrendeld.', null);
+      tryDriveRestore();
     } else {
       showToast('Onjuiste PIN.', null);
       if (inp) { inp.value = ''; inp.focus(); }
@@ -974,7 +990,82 @@ if (typeof document !== 'undefined') {
 
   /* ----- Google Calendar (client-side OAuth, alleen in browser) ----- */
 
-  const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
+  const GCAL_SCOPE = 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file';
+  const BACKUP_FILENAME = 'schoonmaakquest-backup.json';
+  let backupTimer = null;
+
+  async function gdriveApi(path, options) {
+    const resp = await fetch('https://www.googleapis.com' + path, {
+      ...(options || {}),
+      headers: { Authorization: 'Bearer ' + gcalToken, ...((options && options.headers) || {}) },
+    });
+    if (!resp.ok) throw new Error('Drive API fout ' + resp.status);
+    return resp.json();
+  }
+
+  async function driveFindBackup() {
+    const data = await gdriveApi('/drive/v3/files?q=' + encodeURIComponent("name='" + BACKUP_FILENAME + "' and trashed=false") + '&fields=files(id,name,modifiedTime)&pageSize=5');
+    return (data.files || [])[0] || null;
+  }
+
+  async function driveBackupNow(silent) {
+    if (!gcalToken) {
+      if (!silent) showToast('Verbind eerst met Google (tabblad 📅 Agenda).', null);
+      return;
+    }
+    try {
+      const body = JSON.stringify(state);
+      const existing = await driveFindBackup();
+      let fileId = existing ? existing.id : null;
+      if (!fileId) {
+        const meta = await gdriveApi('/drive/v3/files', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' }),
+        });
+        fileId = meta.id;
+      }
+      const resp = await fetch('https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=media', {
+        method: 'PATCH',
+        headers: { Authorization: 'Bearer ' + gcalToken, 'Content-Type': 'application/json' },
+        body,
+      });
+      if (!resp.ok) throw new Error('upload ' + resp.status);
+      state.lastDriveBackup = Date.now();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      if (!silent) showToast('☁️ Backup opgeslagen in Google Drive (' + BACKUP_FILENAME + ').', null);
+    } catch (err) {
+      if (!silent) showToast('Drive-backup mislukt: ' + err.message, null);
+    }
+  }
+
+  function scheduleDriveBackup() {
+    if (state.driveBackup === false) return;
+    clearTimeout(backupTimer);
+    backupTimer = setTimeout(() => { if (gcalToken) driveBackupNow(true); }, 2500);
+  }
+
+  async function tryDriveRestore() {
+    if (!gcalToken) return;
+    if (state.history.length > 0 || state.planned.length > 0) return;
+    try {
+      const f = await driveFindBackup();
+      if (!f) return;
+      const resp = await fetch('https://www.googleapis.com/drive/v3/files/' + f.id + '?alt=media', {
+        headers: { Authorization: 'Bearer ' + gcalToken },
+      });
+      if (!resp.ok) return;
+      const s = await resp.json();
+      if (s && Array.isArray(s.tasks) && Array.isArray(s.rooms) && (s.history.length > 0 || (s.planned || []).length > 0)) {
+        state = s;
+        if (!Array.isArray(state.planned)) state.planned = [];
+        if (typeof state.driveBackup !== 'boolean') state.driveBackup = true;
+        save();
+        render();
+        showToast('☁️ Je progress is hersteld vanuit Google Drive.', null);
+      }
+    } catch (e) { /* stilletjes negeren */ }
+  }
   let gcalToken = null;
   try { gcalToken = sessionStorage.getItem('schoonmaakQuest.gcalToken'); } catch (e) { /* geen sessionStorage */ }
 
@@ -1292,6 +1383,8 @@ if (typeof document !== 'undefined') {
     } else if (action === 'close-edit') {
       document.getElementById('task-edit-overlay').classList.add('hidden');
       editTaskId = null;
+    } else if (action === 'drive-backup') {
+      driveBackupNow(false);
     }
   });
 
@@ -1306,6 +1399,7 @@ if (typeof document !== 'undefined') {
 
   const editForm = document.getElementById('task-edit-form');
   if (editForm) editForm.addEventListener('submit', saveTaskEdit);
+  if (!(state.pinEnabled && !isUnlocked())) tryDriveRestore();
   const progressOverlay = document.getElementById('progress-overlay');
   if (progressOverlay) progressOverlay.addEventListener('click', (e) => {
     if (e.target === progressOverlay) progressOverlay.classList.add('hidden');

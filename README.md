@@ -28,8 +28,8 @@ je voortgang wordt bewaard in `localStorage` van je browser.
 - **Dashboard** met overzicht: wat er nu te doen is, score per kamer, gedaan vandaag.
 - **Statistieken**: klussen per dag (14-dagen grafiek) en recente activiteit.
 - **Ongedaan maken** van de laatste afgevinkte klus (via de toast-melding).
-- **Backup**: exporteer/importeer je data als JSON (tabblad ⚙️ Instellingen),
-  handig om mee te nemen naar een andere browser of telefoon.
+- **Backup**: exporteer/importeer je data als JSON (tabblad ⚙️ Instellingen).
+  Daarnaast: **automatische backup naar Google Drive** (`schoonmaakquest-backup.json`) na elke wijziging zodra je met Google verbonden bent — je progress blijft zo bewaard bij elke deploy/push, op elk apparaat en elk domein (bij lege lokale data wordt de Drive-backup automatisch hersteld). Zet de automatische backup uit via de checkbox in ⚙️.
 
 ## 📱 iPhone-web-app (PWA)
 

@@ -155,7 +155,7 @@ h3 { margin: 22px 0 10px; font-size: 1.05rem; color: var(--muted); text-transfor
   padding: 10px 14px;
   box-shadow: var(--shadow);
 }
-.task.done { opacity: 0.62; }
+.task.done { opacity: 0.62; box-shadow: none; border-style: dashed; border-color: #d1d5db; background: #fafafa; }
 .task.done .task-title { text-decoration: line-through; }
 
 .check-btn {
@@ -290,7 +290,9 @@ h3 { margin: 22px 0 10px; font-size: 1.05rem; color: var(--muted); text-transfor
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: linear-gradient(160deg, var(--green-dark), var(--teal));
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
   display: grid;
   place-items: center;
 }

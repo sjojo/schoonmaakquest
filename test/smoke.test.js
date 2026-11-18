@@ -98,6 +98,10 @@ assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
   assert.strictEqual(elements['edit-task-title'].value, stored.tasks[0].title, 'edit-formulier gevuld met taak');
   click('close-edit');
 
+  // 9. Drive-backup zonder token geeft nette melding (geen crash)
+  click('drive-backup');
+  assert.ok(elements['toast'].innerHTML.includes('Verbind eerst'), 'drive-backup zonder token meldt netjes');
+
   console.log('Smoke-test geslaagd ✔');
   process.exit(0);
 })();
