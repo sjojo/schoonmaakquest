@@ -102,6 +102,14 @@ assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
   click('drive-backup');
   assert.ok(elements['toast'].innerHTML.includes('Verbind eerst'), 'drive-backup zonder token meldt netjes');
 
+  // 11. Toggle-bug: afgevinkte taak nogmaals aanklikken = undo (geen dubbele XP/history)
+  click('reset');
+  const tid = stored.tasks[0].id;
+  click('complete', { id: tid });
+  assert.strictEqual(stored.history.length, 1, 'eerste klik voegt history toe');
+  click('complete', { id: tid });
+  assert.strictEqual(stored.history.length, 0, 'tweede klik op klare taak undo-et (geen extra XP)');
+
   console.log('Smoke-test geslaagd ✔');
   process.exit(0);
 })();
