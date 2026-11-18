@@ -5,7 +5,7 @@ const {
   DAY, FREQS, taskStats, roomScore, xpTotal, levelInfo,
   bestStreak, doneToday, dueTasks, checkBadges, seedState, BADGES,
   isoDate, daysInMonth, monthKey, busyFromEvents, demoBusyMap,
-  spreadOverDays, planMonth,
+  spreadOverDays, planMonth, hashPin,
 } = require('../app.js');
 
 const NOW = Date.parse('2025-06-15T12:00:00');
@@ -198,6 +198,14 @@ function makeState() {
   const keys = assignments.map((a) => a.taskId + '@' + a.date);
   const again = planMonth(s.tasks, (t) => taskStats(s, t, now), now, busy, keys);
   assert.strictEqual(again.length, 0, 'dubbele planning wordt voorkomen');
+}
+
+// 15. PIN-hash is deterministisch en Paper-trail vrij (geen plaintext)
+{
+  assert.strictEqual(hashPin('1234'), hashPin('1234'));
+  assert.notStrictEqual(hashPin('1234'), hashPin('1235'));
+  assert.ok(!hashPin('1234').includes('1234'));
+  assert.strictEqual(hashPin('1234').length, 16);
 }
 
 console.log('Alle logica-tests geslaagd ✔');

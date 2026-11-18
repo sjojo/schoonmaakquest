@@ -19,6 +19,17 @@ function uid() {
   return 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
+function hashPin(pin) {
+  const s = 'schoonmaakquest:' + String(pin);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < s.length; i++) {
+    h1 = Math.imul(h1 ^ s.charCodeAt(i), 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ s.charCodeAt(i), 0x811c9dc5) >>> 0;
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0');
+}
+
 function freqDays(freq) {
   return (FREQS[freq] || FREQS.weekly).days;
 }
@@ -295,13 +306,13 @@ function seedState() {
     T('pl', 'Onderzetters en potten schoonmaken', 'monthly', 10),
     T('pl', 'Grote planten verpotten', 'quarterly', 15),
   ];
-  return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '' };
+  return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {}, planned: [], lastPlanMonth: null, gcalClientId: '', pinEnabled: false, pinHash: null };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     DAY, FREQS, POINT_OPTIONS, BADGES,
-    uid, freqDays, taskEntries, taskStats, roomScore, xpTotal, levelInfo,
+    uid, hashPin, freqDays, taskEntries, taskStats, roomScore, xpTotal, levelInfo,
     bestStreak, startOfToday, doneToday, dueTasks, checkBadges, seedState,
     pad2, isoDate, daysInMonth, monthKey, dayNum, sameMonth, busyFromEvents,
     demoBusyMap, nextDueDate, spreadOverDays, planMonth,
@@ -328,6 +339,8 @@ if (typeof document !== 'undefined') {
           if (!Array.isArray(s.planned)) s.planned = [];
           if (!s.lastPlanMonth) s.lastPlanMonth = null;
           if (!s.gcalClientId) s.gcalClientId = '';
+          if (typeof s.pinEnabled !== 'boolean') s.pinEnabled = false;
+          if (!s.pinHash) s.pinHash = null;
           return s;
         }
       }
@@ -389,6 +402,7 @@ if (typeof document !== 'undefined') {
     unlocked.forEach((b, i) => {
       setTimeout(() => showToast(`🏆 Badge ontgrendeld: ${b.icon} ${b.name}`, null), 400 * (i + 1));
     });
+    scheduleNextEvent(task).catch(() => {});
   }
 
   function undoLast() {
@@ -726,6 +740,23 @@ if (typeof document !== 'undefined') {
           </div>
         </div>
         <div class="card">
+          <h3 style="margin-top:0">🔒 PIN-lock</h3>
+          <p>Vergrendelt de app bij het openen met een PIN (handig op een gedeelde telefoon). Let op: client-side is dit een afschrikmiddel, geen echte beveiliging — voor echte toegangsbeveiliging zet je bijv. Cloudflare Access vóór je GitHub Pages-site (zie README).</p>
+          ${state.pinEnabled ? `
+            <div class="settings-actions">
+              <button class="btn secondary" data-action="lock-now">🔒 Nu vergrendelen</button>
+            </div>
+            <form class="form" id="pin-disable-form" style="margin-top:10px">
+              <input type="password" id="pin-disable" inputmode="numeric" placeholder="PIN (om uit te schakelen)" required />
+              <button type="submit" class="btn danger">Uitschakelen</button>
+            </form>` : `
+            <form class="form" id="pin-setup-form">
+              <input type="password" id="pin-new" inputmode="numeric" pattern="[0-9]*" placeholder="Kies een PIN (min. 4 tekens)" required />
+              <input type="password" id="pin-new2" inputmode="numeric" pattern="[0-9]*" placeholder="Herhaal PIN" required />
+              <button type="submit">PIN instellen</button>
+            </form>`}
+        </div>
+        <div class="card">
           <h3 style="margin-top:0">🔄 Opnieuw beginnen</h3>
           <p>Wis alle voortgang en start opnieuw met de standaardindeling voor een appartement van ca. 60 m².</p>
           <div class="settings-actions">
@@ -737,6 +768,107 @@ if (typeof document !== 'undefined') {
       if (e.target.files && e.target.files[0]) importData(e.target.files[0]);
       e.target.value = '';
     });
+    const setupForm = document.getElementById('pin-setup-form');
+    if (setupForm) setupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const a = document.getElementById('pin-new').value;
+      const b = document.getElementById('pin-new2').value;
+      if (a.length < 4) { showToast('PIN moet minstens 4 tekens zijn.', null); return; }
+      if (a !== b) { showToast('PINs komen niet overeen.', null); return; }
+      await setupPin(a);
+    });
+    const disableForm = document.getElementById('pin-disable-form');
+    if (disableForm) disableForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await disablePin(document.getElementById('pin-disable').value);
+    });
+  }
+
+  /* ----- PIN-lock (client-side) ----- */
+
+  async function hashPinAsync(pin) {
+    try {
+      if (typeof window !== 'undefined' && window.crypto && window.crypto.subtle) {
+        const buf = await window.crypto.subtle.digest('SHA-256', new TextEncoder().encode('schoonmaakquest:' + pin));
+        return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      }
+    } catch (e) { /* val terug op sync hash */ }
+    return hashPin(pin);
+  }
+
+  function isUnlocked() {
+    try { return sessionStorage.getItem('schoonmaakQuest.unlocked') === '1'; } catch (e) { return false; }
+  }
+
+  function showLock() {
+    const ov = document.getElementById('lock-overlay');
+    if (ov) ov.classList.remove('hidden');
+    const inp = document.getElementById('lock-pin');
+    if (inp) inp.focus();
+  }
+
+  function hideLock() {
+    try { sessionStorage.setItem('schoonmaakQuest.unlocked', '1'); } catch (e) { /* negeer */ }
+    const ov = document.getElementById('lock-overlay');
+    if (ov) ov.classList.add('hidden');
+  }
+
+  async function tryUnlock() {
+    const inp = document.getElementById('lock-pin');
+    const v = (inp && inp.value ? inp.value : '').trim();
+    if (!v) return;
+    const h = await hashPinAsync(v);
+    if (state.pinEnabled && h === state.pinHash) {
+      hideLock();
+      showToast('🔓 Ontgrendeld.', null);
+    } else {
+      showToast('Onjuiste PIN.', null);
+      if (inp) { inp.value = ''; inp.focus(); }
+    }
+  }
+
+  async function setupPin(pin) {
+    state.pinHash = await hashPinAsync(pin);
+    state.pinEnabled = true;
+    save();
+    hideLock();
+    render();
+    showToast('🔒 PIN-lock ingeschakeld.', null);
+  }
+
+  async function disablePin(pin) {
+    const h = await hashPinAsync(pin);
+    if (h !== state.pinHash) { showToast('Onjuiste PIN.', null); return; }
+    state.pinEnabled = false;
+    state.pinHash = null;
+    save();
+    render();
+    showToast('PIN-lock uitgeschakeld.', null);
+  }
+
+  function lockNow() {
+    try { sessionStorage.removeItem('schoonmaakQuest.unlocked'); } catch (e) { /* negeer */ }
+    showLock();
+  }
+
+  /* ----- Automatische agenda-events bij terugkerende taken ----- */
+
+  async function scheduleNextEvent(task) {
+    if (!gcalToken) return;
+    if (!['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly'].includes(task.freq)) return;
+    const now = Date.now();
+    const st = taskStats(state, task, now);
+    const date = nextDueDate(st, task.freq, now);
+    const key = task.id + '@' + date;
+    if (state.planned.some((p) => p.taskId + '@' + p.date === key)) return;
+    try {
+      const eventId = await gcalCreateAllDay(task, roomOf(task), date);
+      state.planned.push({ taskId: task.id, date: date, freq: task.freq, eventId: eventId, demo: false, plannedAt: now });
+      save();
+      showToast(`📅 Volgende “${task.title}” in je agenda op ${date}.`, null);
+    } catch (err) {
+      showToast('Agenda-event mislukt: ' + err.message, null);
+    }
   }
 
   /* ----- Google Calendar (client-side OAuth, alleen in browser) ----- */
@@ -856,7 +988,7 @@ if (typeof document !== 'undefined') {
     const y = d.getFullYear();
     const m = d.getMonth();
     const mk = monthKey(y, m);
-    const firstOfMonth = d.getDate() === 1;
+    const earlyMonth = d.getDate() <= 3;
     const monthStart = isoDate(y, m, 1);
     const monthEnd = isoDate(y, m, daysInMonth(y, m));
     const planned = state.planned
@@ -880,7 +1012,7 @@ if (typeof document !== 'undefined') {
 
     el.innerHTML = `
       <h2>Agenda 📅</h2>
-      ${firstOfMonth && state.lastPlanMonth !== mk ? '<div class="empty">🎯 Vandaag is de 1ste van de maand — plan deze maand! Maandelijkse en kwartaal-taken worden dan gespreid over je minst drukke dagen.</div>' : ''}
+      ${earlyMonth && state.lastPlanMonth !== mk ? '<div class="empty">🎯 Begin van de maand en nog niet ingepland — plan deze maand! Maandelijkse en kwartaal-taken worden gespreid over je minst drukke dagen.</div>' : ''}
       <div class="card" style="margin-bottom:14px">
         <h3 style="margin-top:0">Google Calendar-koppeling</h3>
         <p class="room-sub">Wekelijkse/2-wekelijkse taken komen op hun vervaldatum in je agenda. Maandelijkse en kwartaal-taken worden op de 1ste van de maand verdeeld over de dagen met de minste afspraken in je Google Agenda. Dagelijkse taken zet ik niet in je agenda.</p>
@@ -960,12 +1092,22 @@ if (typeof document !== 'undefined') {
       syncCalendar(false)
         .then((r) => showToast(`☁️ ${r.created} klussen naar je Google Agenda gestuurd.`, null))
         .catch((err) => showToast('Sync mislukt: ' + err.message, null));
+    } else if (action === 'lock-now') {
+      lockNow();
     }
   });
 
   const bootD = new Date();
-  if (bootD.getDate() === 1 && state.lastPlanMonth !== monthKey(bootD.getFullYear(), bootD.getMonth()) && gcalToken) {
+  if (bootD.getDate() <= 3 && state.lastPlanMonth !== monthKey(bootD.getFullYear(), bootD.getMonth()) && gcalToken) {
     syncCalendar(false).catch(() => {});
+  }
+
+  const lockForm = document.getElementById('lock-form');
+  if (lockForm) lockForm.addEventListener('submit', (e) => { e.preventDefault(); tryUnlock(); });
+  if (state.pinEnabled && !isUnlocked()) showLock();
+
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof location !== 'undefined' && location.protocol.indexOf('http') === 0) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
   render();

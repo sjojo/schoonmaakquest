@@ -24,6 +24,14 @@ je voortgang wordt bewaard in `localStorage` van je browser.
 - **Backup**: exporteer/importeer je data als JSON (tabblad ⚙️ Instellingen),
   handig om mee te nemen naar een andere browser of telefoon.
 
+## 📱 iPhone-web-app (PWA)
+
+De app is al een zogenoemde **PWA**: op je iPhone open je de site in Safari en kiest **Deel-knop → "Zet op beginscherm"**. Dan krijg je een eigen app-icoon, start de app zonder Safari-balken (standalone) en werkt hij offline dankzij de serviceworker (`sw.js`). Nodig: `manifest.webmanifest` + icons in `icons/` — die staan al in de repo. Na een deploy via GitHub Pages even de pagina verversen op je iPhone, anders houdt Safari de oude cache vast.
+
+## 🔒 PIN-lock
+
+Tabblad ⚙️ Instellingen → **PIN-lock**: stel een PIN in (min. 4 tekens; hash wordt met SHA-256 in localStorage bewaard, nooit plaintext). Bij het openen van de app moet je de PIN invoeren; "Nu vergrendelen" vergrendelt meteen. **Let op:** dit is client-side en dus een afschrikmiddel, geen echte beveiliging. Voor echte toegangscontrole zet je gratis **Cloudflare Access** vóór je GitHub Pages-site (of een wachtwoord op de Pages-site via je DNS/CDN) — dan is er pas echt een login.
+
 ## 📅 Google Calendar-koppeling
 
 Op het tabblad **📅 Agenda** verbind je de app met je Google Agenda (client-side OAuth; er draait geen server — de app vraagt alleen toegang tot agenda-events):
@@ -34,7 +42,8 @@ Op het tabblad **📅 Agenda** verbind je de app met je Google Agenda (client-si
 
 Daarna:
 - **Wekelijkse/2-wekelijkse taken** die te doen zijn komen als all-day event op hun vervaldatum in je agenda
-- **Maandelijkse en kwartaal-taken** worden op de **1ste van de maand** gespreid over de dagen met de minste afspraken in je agenda (kwartaal-taken in de eerste maand van het kwartaal, gespreid over het hele kwartaal). Dagelijkse taken zet ik niet in je agenda
+- **Terugkerende taken automatisch**: bij het afvinken van een wekelijkse/maandelijkse/kwartaal-taak wordt meteen de **volgende occurrence** als event ingepland
+- **Iedere 1ste van de maand wordt opnieuw ingepland**: als je de app in de eerste 3 dagen van de maand opent (en verbonden bent), worden maandelijkse taken gespreid over de minst drukke dagen van die maand en kwartaal-taken (in jan/apr/jul/okt) over het hele kwartaal. Handmatig kan altijd via "Sync naar Google Agenda". Dagelijkse taken zet ik niet in je agenda
 - Zonder verbinding: **"Plan deze maand (demo)"** toont de spreiding met een fictieve agenda
 - Geplande items staan in `state.planned` (dus ook in je JSON-backup); dubbelen worden voorkomen
 
