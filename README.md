@@ -10,9 +10,10 @@ je voortgang wordt bewaard in `localStorage` van je browser.
 
 ## Wat kun je ermee?
 
-- **Kamers** met een schoonmaak-score (0–100%) — woonkamer, keuken, slaapkamer,
-  badkamer, wc, hal en balkon zijn al ingevuld, maar je kunt alles
-  toevoegen/wijzigen/verwijderen.
+- **Kamers** met een schoonmaak-score (0–100%) — standaard al ingevuld voor een
+  appartement van ca. 60 m²: woonkamer, keuken (apart), werkplek/bureau,
+  slaapkamer, badkamer, wc, gang, balkon (incl. planten) en binnenplanten.
+  Alles is in de app toe te voegen/wijzigen/verwijderen.
 - **Taken** per kamer met een frequentie (dagelijks t/m jaarlijks) en een
  zwaarte in XP (5/10/15/25). Een taak is "te doen" zodra het interval verstreken is.
 - **Gamification**: XP per klus, levels (elke level kost 100·level XP extra),

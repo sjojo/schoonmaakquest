@@ -110,7 +110,7 @@ h3 { margin: 22px 0 10px; font-size: 1.05rem; color: var(--muted); text-transfor
 .summary { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
 .summary .chip { background: var(--card); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow); }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
 
 .card {
   background: var(--card);
@@ -120,24 +120,26 @@ h3 { margin: 22px 0 10px; font-size: 1.05rem; color: var(--muted); text-transfor
   padding: 14px;
 }
 
-.room-card { display: flex; align-items: center; gap: 12px; cursor: pointer; transition: transform 0.12s ease; }
+.room-card { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; transition: transform 0.12s ease; }
 .room-card:hover { transform: translateY(-2px); }
-.room-icon { font-size: 1.8rem; }
-.room-name { font-weight: 700; }
-.room-sub { font-size: 0.8rem; color: var(--muted); }
+.room-left { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+.room-icon { font-size: 1.8rem; flex-shrink: 0; }
+.room-text { min-width: 0; }
+.room-name { font-weight: 700; overflow-wrap: break-word; }
+.room-sub { font-size: 0.78rem; color: var(--muted); margin-top: 2px; }
 
 .ring {
   position: relative;
-  width: 52px;
-  height: 52px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   flex-shrink: 0;
   background: conic-gradient(var(--c, var(--green)) calc(var(--p, 0) * 1%), #e5e7eb 0);
 }
-.ring::before { content: ""; position: absolute; inset: 6px; background: var(--card); border-radius: 50%; }
-.ring span { position: relative; font-size: 0.72rem; font-weight: 800; }
+.ring::before { content: ""; position: absolute; inset: 7px; background: var(--card); border-radius: 50%; }
+.ring span { position: relative; font-size: 0.75rem; font-weight: 800; }
 
 .list { display: flex; flex-direction: column; gap: 8px; }
 

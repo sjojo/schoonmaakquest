@@ -123,14 +123,21 @@ function seedState() {
   const rooms = [
     { id: 'wk',  name: 'Woonkamer',  icon: '🛋️' },
     { id: 'ke',  name: 'Keuken',      icon: '🍳' },
+    { id: 'we',  name: 'Werkplek',    icon: '💻' },
     { id: 'sl',  name: 'Slaapkamer',  icon: '🛏️' },
     { id: 'ba',  name: 'Badkamer',    icon: '🚿' },
     { id: 'wc',  name: 'Wc',          icon: '🚽' },
-    { id: 'ha',  name: 'Hal',         icon: '🚪' },
+    { id: 'ga',  name: 'Gang',        icon: '🚪' },
     { id: 'bal', name: 'Balkon',      icon: '🌿' },
+    { id: 'pl',  name: 'Planten',     icon: '🪴' },
   ];
   const T = (roomId, title, freq, points) => ({ id: uid(), roomId, title, freq, points });
   const tasks = [
+    T('wk', 'Stofzuigen', 'weekly', 10),
+    T('wk', 'Stof afnemen', 'biweekly', 10),
+    T('wk', 'Vloer dweilen', 'biweekly', 10),
+    T('wk', 'Bank en kussens uitkloppen', 'monthly', 5),
+    T('wk', 'Ramen lappen', 'quarterly', 15),
     T('ke', 'Aanrecht en kraan schoonmaken', 'daily', 5),
     T('ke', 'Vaatwasser leegruimen', 'daily', 5),
     T('ke', 'Prullenbak legen', 'daily', 5),
@@ -138,11 +145,11 @@ function seedState() {
     T('ke', 'Keukenvloer vegen en dweilen', 'weekly', 10),
     T('ke', 'Koelkast nakijken en schoonmaken', 'monthly', 10),
     T('ke', 'Keukenkastjes afnemen', 'quarterly', 15),
-    T('wk', 'Stofzuigen', 'weekly', 10),
-    T('wk', 'Stof afnemen', 'biweekly', 10),
-    T('wk', 'Vloer dweilen', 'biweekly', 10),
-    T('wk', 'Bank en kussens uitkloppen', 'monthly', 5),
-    T('wk', 'Ramen lappen', 'quarterly', 15),
+    T('we', 'Bureau afnemen', 'weekly', 5),
+    T('we', 'Stofzuigen onder en om het bureau', 'weekly', 10),
+    T('we', 'Kabels en bureaula opruimen', 'weekly', 5),
+    T('we', 'Beeldscherm schoonmaken', 'biweekly', 5),
+    T('we', 'Bureaustoel afnemen', 'monthly', 5),
     T('sl', 'Bed verschonen', 'biweekly', 10),
     T('sl', 'Stofzuigen', 'weekly', 10),
     T('sl', 'Kleding opruimen', 'daily', 5),
@@ -155,12 +162,18 @@ function seedState() {
     T('wc', 'Wc schoonmaken', 'weekly', 10),
     T('wc', 'Wc-vloer dweilen', 'weekly', 5),
     T('wc', 'Handdoekje en zeep aanvullen', 'weekly', 5),
-    T('ha', 'Stofzuigen', 'weekly', 10),
-    T('ha', 'Schoenen en jassen opruimen', 'daily', 5),
-    T('ha', 'Deurmat uitslaan', 'monthly', 5),
-    T('bal', 'Balkonvloer vegen', 'monthly', 5),
-    T('bal', 'Planten water geven', 'weekly', 5),
+    T('ga', 'Stofzuigen', 'weekly', 10),
+    T('ga', 'Schoenen en jassen opruimen', 'daily', 5),
+    T('ga', 'Deurmat uitslaan', 'monthly', 5),
+    T('bal', 'Balkonvloer vegen', 'weekly', 10),
+    T('bal', 'Balkonplanten water geven', 'weekly', 10),
+    T('bal', 'Balkonplanten checken op zieke bladeren', 'weekly', 5),
     T('bal', 'Balkondeur en ramen lappen', 'quarterly', 10),
+    T('pl', 'Binnenplanten water geven', 'weekly', 10),
+    T('pl', 'Bladeren afnemen (stof verwijderen)', 'biweekly', 10),
+    T('pl', 'Vergeelde of zieke bladeren verwijderen', 'weekly', 5),
+    T('pl', 'Onderzetters en potten schoonmaken', 'monthly', 10),
+    T('pl', 'Grote planten verpotten', 'quarterly', 15),
   ];
   return { version: 1, createdAt: now, rooms, tasks, history: [], badges: {} };
 }
@@ -382,10 +395,14 @@ if (typeof document !== 'undefined') {
       const dueCount = tasks.filter((t) => taskStats(state, t, now).due).length;
       return `
         <div class="card room-card" data-action="filter-room" data-id="${r.id}" title="Bekijk taken van ${esc(r.name)}">
-          <div class="room-icon">${esc(r.icon)}</div>
-          <div class="room-name">${esc(r.name)}</div>
-          <div class="ring" style="--p:${score}; --c:${scoreColor(score)}"><span>${score}%</span></div>
-          <div class="room-sub">${tasks.length - dueCount}/${tasks.length} klaar${dueCount ? ` · ${dueCount} te doen` : ''}</div>
+          <div class="room-left">
+            <div class="room-icon">${esc(r.icon)}</div>
+            <div class="room-text">
+              <div class="room-name">${esc(r.name)}</div>
+              <div class="room-sub">${tasks.length - dueCount}/${tasks.length} klaar${dueCount ? ` · ${dueCount} te doen` : ''}</div>
+            </div>
+          </div>
+          <div class="ring" style="--p:${score}; --c:${scoreColor(score)}" title="Schoonmaak-score: ${score}%"><span>${score}%</span></div>
         </div>`;
     }).join('');
 
