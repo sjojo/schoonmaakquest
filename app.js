@@ -1041,10 +1041,14 @@ if (typeof document !== 'undefined') {
       } catch (e) { state.gcalCalendarId = null; }
     }
     const list = await gcalApi('/users/me/calendarList?maxResults=250');
-    const found = (list.items || []).find((c) => (c.summary || '').trim().toLowerCase() === SCHOONMAAK_CALENDAR.toLowerCase());
+    const found = (list.items || []).find((c) => {
+      const s = (c.summary || '').trim().toLowerCase();
+      return s === 'schoonmaken' || s === 'schoonmaak' || s.startsWith('schoonmaak');
+    });
     if (found) {
       state.gcalCalendarId = found.id;
       save();
+      showToast(`📅 Gebruik bestaande agenda “${found.summary}”.`, null);
       return found.id;
     }
     const created = await gcalApi('/calendars', {
