@@ -392,6 +392,23 @@ if (typeof module !== 'undefined' && module.exports) {
 
 if (typeof document !== 'undefined') {
   const STORAGE_KEY = 'schoonmaakQuest.v1';
+  const THEME_KEY = 'schoonmaakQuest.theme';
+
+  function currentTheme() {
+    try {
+      const t = localStorage.getItem(THEME_KEY);
+      if (t === 'dark' || t === 'light') return t;
+      if (typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+    } catch (e) { /* negeer */ }
+    return 'light';
+  }
+
+  function applyTheme() {
+    const t = currentTheme();
+    if (typeof document !== 'undefined' && document.documentElement) document.documentElement.setAttribute('data-theme', t);
+    const b = document.getElementById('themeBtn');
+    if (b) b.textContent = t === 'dark' ? '☀️' : '🌙';
+  }
   const ROOM_ICONS = ['🛋️', '🍳', '🛏️', '🚿', '🚽', '🚪', '🌿', '📚', '🧺', '🖥️', '🐱', '🎸', '🏠', '🚲', '🧸'];
 
   let state = load();
@@ -1451,7 +1468,7 @@ if (typeof document !== 'undefined') {
       <div class="lock-icon">🏆</div>
       <div class="lock-title">Level ${li.level}</div>
       <div class="xp-wrap" style="margin:10px auto;max-width:240px">
-        <div class="xp-bar" style="background:#e5e7eb"><div class="xp-fill" style="width:${Math.round(li.progress * 100)}%"></div></div>
+        <div class="xp-bar" style="background:var(--line)"><div class="xp-fill" style="width:${Math.round(li.progress * 100)}%"></div></div>
         <div class="xp-text" style="color:var(--muted)">${li.remaining} / ${li.need} XP naar level ${li.level + 1} · totaal ${li.xp} XP</div>
       </div>
       <div class="stat-grid" style="margin-top:12px">
@@ -1572,6 +1589,10 @@ if (typeof document !== 'undefined') {
       editTaskId = null;
     } else if (action === 'drive-backup') {
       driveBackupNow(false);
+    } else if (action === 'toggle-theme') {
+      const next = currentTheme() === 'dark' ? 'light' : 'dark';
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* negeer */ }
+      applyTheme();
     }
   });
 
@@ -1610,5 +1631,6 @@ if (typeof document !== 'undefined') {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
+  applyTheme();
   render();
 }

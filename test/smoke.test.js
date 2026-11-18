@@ -27,7 +27,7 @@ let stored = null;
 
 global.localStorage = {
   getItem: () => null,
-  setItem: (k, v) => { stored = JSON.parse(v); },
+  setItem: (k, v) => { try { stored = JSON.parse(v); } catch (e) { stored = v; } },
 };
 global.document = {
   getElementById: (id) => fakeEl(id),
@@ -114,6 +114,10 @@ assert.ok(elements['view-tasks'].innerHTML.length > 0, 'taken-filter rendert');
   assert.strictEqual(stored.history.length, 1, 'eerste klik voegt history toe');
   click('complete', { id: tid });
   assert.strictEqual(stored.history.length, 0, 'tweede klik op klare taak undo-et (geen extra XP)');
+
+  // 12. Theme-toggle werkt zonder crash
+  click('toggle-theme');
+  assert.ok(true, 'theme toggle klik ok');
 
   console.log('Smoke-test geslaagd ✔');
   process.exit(0);
