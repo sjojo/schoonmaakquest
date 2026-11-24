@@ -1158,15 +1158,35 @@ if (typeof document !== 'undefined') {
       }
     } catch (e) { /* stilletjes negeren */ }
   }
+  const TOKEN_KEY = 'schoonmaakQuest.gcalToken';
   let gcalToken = null;
-  try { gcalToken = sessionStorage.getItem('schoonmaakQuest.gcalToken'); } catch (e) { /* geen sessionStorage */ }
+  try { gcalToken = sessionStorage.getItem(TOKEN_KEY); } catch (e) { /* geen sessionStorage */ }
 
-  function setGcalToken(t) {
+  function setGcalToken(t, expiresIn) {
     gcalToken = t;
     try {
-      if (t) sessionStorage.setItem('schoonmaakQuest.gcalToken', t);
-      else sessionStorage.removeItem('schoonmaakQuest.gcalToken');
+      if (t) {
+        sessionStorage.setItem(TOKEN_KEY, t);
+        const exp = Date.now() + Math.max(0, (Number(expiresIn) || 3600) - 60) * 1000;
+        localStorage.setItem(TOKEN_KEY + '.meta', JSON.stringify({ exp: exp }));
+        localStorage.setItem(TOKEN_KEY, t);
+      } else {
+        sessionStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(TOKEN_KEY + '.meta');
+      }
     } catch (e) { /* negeer */ }
+  }
+
+  function loadPersistedToken() {
+    try {
+      const t = localStorage.getItem(TOKEN_KEY);
+      const metaRaw = localStorage.getItem(TOKEN_KEY + '.meta');
+      if (!t || !metaRaw) return null;
+      const meta = JSON.parse(metaRaw);
+      if (meta && meta.exp > Date.now() + 30000) return t;
+    } catch (e) { /* negeer */ }
+    return null;
   }
 
   function gcalLoadScript() {
@@ -1189,7 +1209,7 @@ if (typeof document !== 'undefined') {
         scope: GCAL_SCOPE,
         callback: (resp) => {
           if (resp && resp.error) reject(new Error(resp.error));
-          else { setGcalToken(resp.access_token); resolve(resp.access_token); }
+          else { setGcalToken(resp.access_token, resp.expires_in); resolve(resp.access_token); }
         },
       });
       client.requestAccessToken({ prompt: 'consent' });
@@ -1205,7 +1225,7 @@ if (typeof document !== 'undefined') {
         prompt: '',
         callback: (resp) => {
           if (resp && resp.error) reject(new Error(resp.error));
-          else { setGcalToken(resp.access_token); resolve(resp.access_token); }
+          else { setGcalToken(resp.access_token, resp.expires_in); resolve(resp.access_token); }
         },
       });
       client.requestAccessToken({ prompt: '' });
@@ -1448,7 +1468,7 @@ if (typeof document !== 'undefined') {
           <button class="btn" data-action="plan-real">☁️ Sync naar agenda “Schoonmaak”</button>
           <button class="btn secondary" data-action="replan" title="Verwijder alle toekomstige schoonmaak-events en plan opnieuw gespreid">🧹 Opschonen + opnieuw spreiden</button>
         </div>
-        <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google (Calendar + Drive-backup).' : state.gcalClientId ? 'Client ID opgeslagen — de app probeert automatisch (stilletjes) te verbinden. Lukt dat niet? Klik dan één keer “Verbind met Google” (per apparaat).' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
+        <p class="room-sub" style="margin:8px 0 0">${gcalToken ? '✅ Verbonden met Google (Calendar + Drive-backup) — token wordt ±1 uur onthouden.' : state.gcalClientId ? 'Client ID opgeslagen — de app onthoudt de koppeling (±1 uur) en probeert daarna automatisch stil te herverbinden. Lukt dat niet (bv. Safari blokkeert stille login)? Klik dan één keer “Verbind met Google”.' : 'Nog niet verbonden — vul je Client ID in en klik “Verbind met Google”, of gebruik de demo.'}</p>
       </div>
       <h3>Gepland deze maand (${bundles.length} agenda-items, ${planned.length} taken)</h3>
       <div class="list">${rows || '<div class="empty">Nog niets gepland voor ' + mk + '. Klik op “Plan deze maand”.</div>'}</div>`;
@@ -1614,13 +1634,18 @@ if (typeof document !== 'undefined') {
   }
 
   async function bootGoogle() {
-    if (state.gcalClientId && !gcalToken) {
-      try {
-        await gcalConnectSilent(state.gcalClientId);
-        render();
-        tryDriveRestore();
-      } catch (e) { /* stille consent niet gelukt -> handmatig via knop in 📅 Agenda */ }
+    if (!gcalToken) {
+      const persisted = loadPersistedToken();
+      if (persisted) {
+        gcalToken = persisted;
+      } else if (state.gcalClientId) {
+        try {
+          await gcalConnectSilent(state.gcalClientId);
+        } catch (e) { /* stille consent niet gelukt (bv. Safari blokkeert third-party cookies) -> handmatig via knop in 📅 Agenda */ }
+      }
     }
+    render();
+    tryDriveRestore();
     maybeAutoPlan();
   }
   if (!(state.pinEnabled && !isUnlocked())) bootGoogle();

@@ -35,7 +35,7 @@ je voortgang wordt bewaard in `localStorage` van je browser.
 
 De app draait op één gedeelde URL (GitHub Pages / je subdomein), dus overal hetzelfde adres. Zo blijft alles gesynchroniseerd:
 - **Progress/data**: automatische backup naar Google Drive na elke wijziging + auto-herstel bij lege lokale data → je klussen, XP, streaks en planning volgen je mee naar elk apparaat
-- **Google-koppeling**: per apparaat één keer "Verbind met Google" (OAuth-consent); daarna verbindt de app zichzelf stil (`prompt: ''`) bij elke start en bij een verlopen token (401 → stille re-auth). Let op: elk domein moet in Cloud Console als Authorized JavaScript origin staan (`https://sjojo.github.io`, `https://schoonmaak.spstuur.nl`, `http://localhost`)
+- **Google-koppeling**: per apparaat één keer "Verbind met Google" (OAuth-consent). De app onthoudt het token ±1 uur (localStorage) en probeert daarna bij elke start een **stille herverbinding** (`prompt: ''`); bij een 401 wordt stil opnieuw geauthenticeerd. Zonder backend kan Google geen langlevend refresh token geven — op bv. iPhone/Safari kan de stille login geblokkeerd worden door third-party-cookie-restricties, dan is af en toe één klik op "Verbind met Google" nodig. Let op: elk domein moet in Cloud Console als Authorized JavaScript origin staan (`https://sjojo.github.io`, `https://schoonmaak.spstuur.nl`, `http://localhost`)
 - **PIN-lock** staat los per apparaat (localStorage)
 
 ## 📱 iPhone-web-app (PWA)
